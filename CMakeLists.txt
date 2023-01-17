@@ -1004,7 +1004,6 @@ else()
     pkg_check_modules(OCL_ICD ocl-icd>=1.3)
   endif()
 
-
   # Need to avoid finding the Apple OpenCL framework
   set(CMAKE_FIND_FRAMEWORK NEVER CACHE STRING "Find frameworks on macOS")
 
@@ -1079,6 +1078,8 @@ else()
 
 endif()
 
+else() # DEFAULT_ENABLE_ICD
+  set(OPENCL_LIBRARIES "OpenCL" CACHE INTERNAL "ocl-icd library")
 endif()
 
 setup_cached_var(ENABLE_ICD "Using an ICD loader"
@@ -1112,7 +1113,8 @@ if(NOT APPLE)
   find_file(OPENCL_HPP opencl.hpp PATH_SUFFIXES CL)
 endif()
 
-if(OPENCL_H AND ENABLE_ICD AND (NOT HAVE_OCL_ICD_30_COMPATIBLE))
+# Do not use system OpenCL headers for Ventus GPGPU.
+if(OPENCL_H AND ENABLE_ICD AND (NOT HAVE_OCL_ICD_30_COMPATIBLE) AND NOT ENABLE_VENTUS)
   # if system-wide headers are present, ICD is enabled and older than 3.0 -> use the system-wide headers
   # TBD we're assuming a sane combination of header & ICD versions
   message(STATUS "opencl.h found (${OPENCL_H}) and ICD <3.0 enabled, using system headers")
