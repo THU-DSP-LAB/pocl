@@ -80,7 +80,7 @@ POP_COMPILER_DIAGS
 #include "UnifyPrintf.h"
 #include "linker.h"
 
-//#define DEBUG_POCL_LLVM_API
+#define DEBUG_POCL_LLVM_API
 
 #if defined(DEBUG_POCL_LLVM_API) && defined(NDEBUG)
 #undef NDEBUG
