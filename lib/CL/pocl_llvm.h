@@ -34,6 +34,8 @@ extern "C" {
 
   void InitializeLLVM ();
   void UnInitializeLLVM ();
+  POCL_EXPORT
+  int pocl_ventus_release_IR(cl_program  program);
 
   /* Returns the cpu name as reported by LLVM. */
   POCL_EXPORT
