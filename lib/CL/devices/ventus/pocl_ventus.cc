@@ -93,8 +93,9 @@ static const char *ventus_final_ld_flags[] = {
 
 static const char *ventus_other_compile_flags[] = {
 	"-I" CLANG_RESOURCE_DIR"/../../../../libclc/generic/include",
-	CLANG_RESOURCE_DIR"/../../../../libclc/riscv32/lib/workitem/get_global_id.cl",
-	"-O1",
+  CLANG_RESOURCE_DIR"/../../../../../pocl/get_global_id.s",
+	//CLANG_RESOURCE_DIR"/../../../../libclc/riscv32/lib/workitem/get_global_id.cl",
+	//"-O1",
 	"-cl-std=CL2.0",
 	"-Wl,-T," CLANG_RESOURCE_DIR"/../../../../utils/ldscripts/ventus/elf32lriscv.ld",
 	NULL
@@ -147,7 +148,7 @@ pocl_ventus_init_device_ops(struct pocl_device_ops *ops)
   ops->supports_binary = NULL;
   ops->build_poclbinary = NULL;
   ops->compile_kernel = NULL;  //or use int (*build_builtin) (cl_program program, cl_uint device_i);
-
+  ops->create_kernel = NULL;
   ops->join = pocl_ventus_join;
   ops->submit = pocl_ventus_submit;
   ops->broadcast = pocl_broadcast;
@@ -242,6 +243,7 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   dev->long_name = "Ventus GPGPU device";
   dev->vendor = "THU";
   dev->vendor_id = 0; // TODO: Update vendor id!
+  dev->version = "2.0";
   dev->available = CL_TRUE;
   dev->compiler_available = CL_TRUE;
   dev->linker_available = CL_TRUE;
@@ -635,7 +637,7 @@ uint64_t abuf_size = 0;
   memcpy(kernel_metadata+KNL_GL_OFFSET_X,&global_offset_32[0],4);
   memcpy(kernel_metadata+KNL_GL_OFFSET_Y,&global_offset_32[1],4);
   memcpy(kernel_metadata+KNL_GL_OFFSET_Z,&global_offset_32[2],4);
-//memcpy(kernel_metadata+KNL_PRINT_ADDR,global_offset_32[0],4);
+//memcpy(kernel_metadata+KNL_PRINT_ADDR,print_buf_addr,4);
   uint64_t knl_dev_mem_addr;
   err = vt_buf_alloc(d->vt_device, KNL_MAX_METADATA_SIZE, &knl_dev_mem_addr,0,0,0);
   if (err != 0) {
@@ -702,7 +704,7 @@ uint64_t abuf_size = 0;
   assert(0 == err);
 
   // wait for the execution to complete
-  err = vt_ready_wait(d->vt_device, 1000);
+  err = vt_ready_wait(d->vt_device, -1);
   assert(0 == err);
 
   // move print buffer back or wait to read?     
@@ -1009,10 +1011,7 @@ int pocl_ventus_build_source (cl_program program, cl_uint device_i,
 	for(int i = 0; ventus_other_compile_flags[i] != NULL; i++) {
 		ss_cmd << ventus_other_compile_flags[i] << " ";
 	}
-#ifndef POCL_DEBUG_FLAG_GENERAL
-	ss_cmd << " -w ";
-#endif
-	ss_cmd << " -o " << "object.riscv" << std::endl;
+        ss_cmd << " -o " << "object.riscv" << std::endl;
 	POCL_MSG_PRINT_LLVM("running \"%s\"\n", ss_cmd.str().c_str());
 
 	FILE *fp = popen(ss_cmd.str().c_str(), "r");
