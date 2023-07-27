@@ -75,6 +75,8 @@ void pocl_debug_messages_setup(const char *debug) {
       pocl_debug_messages_filter |= POCL_DEBUG_FLAG_PROXY;
     else if (strncmp(ptr, "llvm", 4) == 0)
       pocl_debug_messages_filter |= POCL_DEBUG_FLAG_LLVM;
+    else if (strncmp(ptr, "ventus", 6) == 0)
+      pocl_debug_messages_filter |= POCL_DEBUG_FLAG_VENTUS;
     else if (strncmp(ptr, "refc", 4) == 0)
       pocl_debug_messages_filter |= POCL_DEBUG_FLAG_REFCOUNTS;
     else if (strncmp(ptr, "lock", 4) == 0)
