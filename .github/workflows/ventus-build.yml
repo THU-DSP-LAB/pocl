@@ -1,0 +1,89 @@
+name: Build VENTUS
+env:
+  LLVM: llvm
+  OCL_ICD: ocl-icd
+  ISA_SIMULATOR: ventus-gpgpu-isa-simulator
+  BUILD_TYPE: Release
+  VENTUS_DRIVER: ventus-driver
+  GPU-RODINIA: gpu-rodinia
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout POCL
+      uses: actions/checkout@v3
+
+    - name: Use Node.js 16.x
+      uses: actions/setup-node@v3
+      with:
+        node-version: 16.x
+        registry-url: 'https://registry.npmjs.org'
+
+
+    - name: Install Ninja
+      uses: llvm/actions/install-ninja@main
+
+    - name: Install Other needed packages # maybe install llvm release is a better choice
+      run: |
+        sudo apt-get install -y \
+        device-tree-compiler \
+        bsdmainutils \
+        ccache
+
+    - name: Clone needed packages
+      run: |
+        git clone https://github.com/THU-DSP-LAB/llvm-project.git  ${{github.workspace}}/../$LLVM
+        git clone https://github.com/OCL-dev/ocl-icd.git ${{github.workspace}}/../$OCL_ICD
+        git clone https://github.com/THU-DSP-LAB/ventus-gpgpu-isa-simulator.git ${{github.workspace}}/../$ISA_SIMULATOR
+        git clone https://github.com/THU-DSP-LAB/ventus-driver.git ${{github.workspace}}/../$VENTUS_DRIVER
+        git clone https://github.com/Jules-Kong/gpu-rodinia.git ${{github.workspace}}/../$GPU-RODINIA
+        export DRIVER_DIR=${{github.workspace}}/../$VENTUS_DRIVER
+        export DRIVER_BUILD_DIR=${DRIVER_DIR}/build
+        export VENTUS_INSTALL_PREFIX=${{github.workspace}}/install
+
+    - name: Start building llvm-ventus
+      shell: bash
+      run: |
+        bash build-ventus.sh --build llvm
+
+    - name: Start building ocl-icd
+      shell: bash
+      run: |
+        bash build-ventus.sh --build ${OCL_ICD}
+
+    - name: Start building libclc
+      shell: bash
+      run: |
+        bash build-ventus.sh --build libclc
+
+    - name: Start building spike
+      shell: bash
+      run: |
+        bash build-ventus.sh --build spike
+
+    - name: Start building driver
+      shell: bash
+      run: |
+        bash build-ventus.sh --build driver
+
+    - name: Start building pocl
+      shell: bash
+      run: |
+        bash build-ventus.sh --build ${POCL}
+
+    - name: Start building gpu-rodinia
+      shell: bash
+      run: |
+         bash build-ventus.sh --build rodinia
+
+    - name: Start ISA simulation test
+      run: |
+        # Later need to add test files and test script for testing
+        echo "Test files and scripts will be added later"
