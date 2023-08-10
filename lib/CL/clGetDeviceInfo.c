@@ -231,7 +231,7 @@ POname(clGetDeviceInfo)(cl_device_id   device,
    * none of the PoCL devices have fully compatible 2.x compilers,
    * and also in 3.0 this query is deprecated (there is a better solution). */
   case CL_DEVICE_OPENCL_C_VERSION                  :
-    POCL_RETURN_GETINFO_STR ("OpenCL C 1.2 PoCL");
+    POCL_RETURN_GETINFO_STR ("OpenCL C 2.0 PoCL");
   case CL_DEVICE_BUILT_IN_KERNELS                  :
     if (device->builtin_kernel_list)
       POCL_RETURN_GETINFO_STR (device->builtin_kernel_list);
