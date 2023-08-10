@@ -250,8 +250,7 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
 
   char extensions[1024];
   extensions[0] = 0;
-  strcat (extensions, "cl_khr_fp64"
-                      " __opencl_c_generic_address_space");
+  strcat (extensions, "cl_khr_fp64");
   dev->extensions = strdup (extensions); // no extention support now
 
   dev->profile = "FULL_PROFILE";
