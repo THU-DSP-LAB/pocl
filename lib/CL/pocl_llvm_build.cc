@@ -368,6 +368,8 @@ int pocl_llvm_build_program(cl_program program,
     exts += ' ';
     exts += device->features;
   }
+  if (strcmp(device->llvm_cpu, "ventus-gpgpu") == 0)
+    exts += device->features;
   llvm::StringRef extensions(exts);
 
   std::string cl_ext;

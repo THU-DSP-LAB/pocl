@@ -249,11 +249,13 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   dev->linker_available = CL_TRUE;
 
   char extensions[1024];
+  char features[1024];
   extensions[0] = 0;
-  strcat (extensions, "cl_khr_fp64"
-                      " __opencl_c_generic_address_space");
+  strcat (extensions, "cl_khr_fp64");
+  strcat(features, "__opencl_c_generic_address_space"
+                   " __opencl_c_named_address_space_builtins");
   dev->extensions = strdup (extensions); // no extention support now
-
+  dev->features = strdup(features);
   dev->profile = "FULL_PROFILE";
   dev->endian_little = CL_TRUE;
 
@@ -1150,6 +1152,7 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
 	for(int i = 0; ventus_other_compile_flags[i] != NULL; i++) {
 		ss_cmd << ventus_other_compile_flags[i] << " ";
 	}
+  ss_cmd << "-D__opencl_c_named_address_space_builtins" << " ";
   ss_cmd << "-Wl,--init=" << program->kernel_meta->name << " ";
 #ifdef POCL_DEBUG_FLAG_GENERAL
 	ss_cmd << " -w ";
