@@ -230,7 +230,13 @@ POname(clGetDeviceInfo)(cl_device_id   device,
    *
    * none of the PoCL devices have fully compatible 2.x compilers,
    * and also in 3.0 this query is deprecated (there is a better solution). */
+  // For OpenCL 3.0, the minimum required OpenCL C version is OpenCL C 1.2.
+  // For OpenCL 2.x, the minimum required OpenCL C version is OpenCL C 2.0.
+  // SETUP_DEVICE_CL_VERSION(2, 0) in pocl_ventus.cc
   case CL_DEVICE_OPENCL_C_VERSION                  :
+  if(device->version_as_int == 200)
+    POCL_RETURN_GETINFO_STR ("OpenCL C 2.0 PoCL");
+  else
     POCL_RETURN_GETINFO_STR ("OpenCL C 1.2 PoCL");
   case CL_DEVICE_BUILT_IN_KERNELS                  :
     if (device->builtin_kernel_list)
