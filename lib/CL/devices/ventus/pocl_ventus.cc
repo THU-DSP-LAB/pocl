@@ -366,7 +366,7 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
   else
       knl_name_list[meta->name] = 0;
 
-    uint64_t num_thread=32;
+    uint64_t num_thread=4;
     uint64_t num_warp=(pc->local_size[0]*pc->local_size[1]*pc->local_size[2] + num_thread-1)/ num_thread;
     uint64_t num_workgroups[3];
     num_workgroups[0]=pc->num_groups[0];num_workgroups[1]=pc->num_groups[1];num_workgroups[2]=pc->num_groups[2];
@@ -662,11 +662,7 @@ uint64_t abuf_size = 0;
 	exit(1);
 #endif
 
-  ldssize=0x1000; //pass from elf file
-  pdssize=0x1000; //pass from elf file
-  start_pc=0x80000000; // start.S baseaddr, now lock to 0x80000000
-  sgpr_usage=32;
-  vgpr_usage=32;
+
   uint64_t pc_src_size=0x10000000;
   uint64_t pc_dev_mem_addr = 0x80000000;
 //  ///TODO 在这个地址放程序段
