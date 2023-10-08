@@ -26,9 +26,7 @@
 set_opencl_header_includes()
 
 # Ventus GPGPU: Search ocl-icd loader from ventus-llvm install/lib
-if (ENABLE_VENTUS)
-  link_directories(${LLVM_LIBDIR})
-endif()
+link_directories(${LLVM_LIBDIR})
 
 add_executable(poclcc poclcc.c)
 harden(poclcc)

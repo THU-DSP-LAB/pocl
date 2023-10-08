@@ -35,9 +35,7 @@
 set_opencl_header_includes()
 
 # Ventus GPGPU: Search ocl-icd loader from ventus-llvm install/lib
-if (ENABLE_VENTUS)
-  link_directories(${LLVM_LIBDIR})
-endif()
+link_directories(${LLVM_LIBDIR})
 
 # DOWNLOAD_EXTRACT_TIMESTAMP option to ExternalProject
 if(POLICY CMP0135)

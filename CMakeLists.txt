@@ -1064,7 +1064,7 @@ if(NOT APPLE)
 endif()
 
 # Do not use system OpenCL headers for Ventus GPGPU.
-if(OPENCL_H AND ENABLE_ICD AND (NOT HAVE_OCL_ICD_30_COMPATIBLE) AND NOT ENABLE_VENTUS)
+if(OPENCL_H AND ENABLE_ICD AND (NOT HAVE_OCL_ICD_30_COMPATIBLE) AND NOT 1)
   # if system-wide headers are present, ICD is enabled and older than 3.0 -> use the system-wide headers
   # TBD we're assuming a sane combination of header & ICD versions
   message(STATUS "OpenCL.h found (${OPENCL_H}) and ICD <3.0 enabled, using system headers")
