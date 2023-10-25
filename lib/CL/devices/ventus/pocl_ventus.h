@@ -43,6 +43,7 @@ typedef struct vt_device_data_t {
 
   /* Currently loaded kernel. */
   cl_kernel current_kernel;
+  cl_bool available;
   
   /* printf buffer */
   void *printf_buffer;

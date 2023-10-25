@@ -244,7 +244,8 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   dev->long_name = "Ventus GPGPU device";
   dev->vendor = "THU";
   dev->vendor_id = 0; // TODO: Update vendor id!
-  dev->available = CL_TRUE;
+  d->available = CL_TRUE;
+  dev->available = &d->available;
   dev->compiler_available = CL_TRUE;
   dev->linker_available = CL_TRUE;
 
@@ -1133,7 +1134,7 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
   std::stringstream ss_cmd;
 	std::stringstream ss_out;
 
-  char program_bc_path[POCL_FILENAME_LENGTH];
+  char program_bc_path[POCL_MAX_PATHNAME_LENGTH];
     
 
   //pocl_cache_create_program_cachedir(program, device_i, program->source,
