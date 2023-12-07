@@ -598,9 +598,9 @@ step5 make a writefile for chisel
       if ((meta->arg_info[i].type == POCL_ARG_TYPE_POINTER)
        || (meta->arg_info[i].type == POCL_ARG_TYPE_IMAGE)
        || (meta->arg_info[i].type == POCL_ARG_TYPE_SAMPLER)) {
-       // memcpy(abuf_args_data+abuf_args_p,((cl_mem)(al->value))->device_ptrs->mem_ptr,4);
-        memcpy(abuf_args_data+abuf_args_p,arguments[i],4);
-        abuf_args_p+=4;
+        size_t alloc_p = pocl_align_value(abuf_args_p, 4);
+        memcpy(abuf_args_data+alloc_p,arguments[i],4);
+        abuf_args_p=alloc_p + 4;
       } else {
         size_t alloc_p = pocl_align_value(abuf_args_p, pocl_size_ceil2_64(std::max(al->size, (uint64_t)4)));
         memcpy(abuf_args_data+alloc_p,al->value,al->size);
