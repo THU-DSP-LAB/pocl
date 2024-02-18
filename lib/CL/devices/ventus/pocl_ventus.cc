@@ -107,6 +107,22 @@ static const char *ventus_objdump_flags[] = {
 	NULL
 };
 
+void reverseString(char* str, int length) {                                     
+    int start = 0;                                                              
+    int end = length - 1;                                                       
+                                                                                
+    while (start < end) {                                                       
+        // Swap characters                                                      
+        char temp = str[start];                                                 
+        str[start] = str[end];                                                  
+        str[end] = temp;                                                        
+                                                                                
+        // Move towards the center                                              
+        start++;                                                                
+        end--;                                                                  
+    }                                                                           
+}  
+
 void
 pocl_ventus_init_device_ops(struct pocl_device_ops *ops)
 {
@@ -684,13 +700,53 @@ step5 make a writefile for chisel
    * parsing object file to obtain vmem file using assembler
    ***********************************************************************************************************/
   #ifdef __linux__
-	  std::string assembler_path = CLANG;
-    assembler_path = assembler_path.substr(0,assembler_path.length()-6);
-	  assembler_path += "/../../assemble.sh";
-  	system((std::string("chmod +x ") + assembler_path).c_str());
-  	assembler_path += " object";
-  	system(assembler_path.c_str());
-	  POCL_MSG_PRINT_VENTUS("Vmem file has been written to object.vmem\n");
+    std::string dump_cmd = std::string(R"(llvm-objdump -d --mattr=+v,+zfinx object.riscv > object.dump)");
+    system(dump_cmd.c_str());
+
+    FILE* inputFile = fopen("object.dump", "r");
+    FILE* outputFile = fopen("object.vmem", "w");
+
+    if (inputFile == NULL || outputFile == NULL) {
+        perror("Error opening file");
+        exit(EXIT_FAILURE);
+    }
+
+    int foundTextSection = 0;
+    char line[256];
+
+    while (fgets(line, sizeof(line), inputFile) != NULL) {
+        // Judge if meet .text section
+        if (strstr(line, "Disassembly of section .text:") != NULL) {
+            foundTextSection = 1;
+            continue;
+        }
+
+        // Ignore other non .text section
+        if (strstr(line, "Disassembly of section") != NULL) {
+            foundTextSection = 0;
+        }
+
+        if (foundTextSection == 1) {
+            while (fgets(line, sizeof(line), inputFile) != NULL) {
+                char extracted[18];
+                char reversed[9];
+
+                // Extracting the hex string
+                if (line[0]=='8' && line[8]==':' && sscanf(line, "%23[0-9a-fA-F: ]", extracted)==1) {
+                    char prefix[11], hex1[3], hex2[3], hex3[3], hex4[3];
+                    char concatenated[9];
+                    if (sscanf(extracted, "%10s %2s %2s %2s %2s", prefix, hex1, hex2, hex3, hex4) == 5) {
+                        sprintf(concatenated, "%s%s%s%s", hex4, hex3, hex2, hex1);
+                        fprintf(outputFile, "%s\n", concatenated);
+	            }
+		}
+	    }
+	}
+    }
+
+    fclose(inputFile);
+    fclose(outputFile);
+    POCL_MSG_PRINT_VENTUS("Vmem file has been written to object.vmem\n");
   #elif
     POCL_MSG_ERR("This operate system is not supported now by ventus, please use linux! \n");
     exit(1);
