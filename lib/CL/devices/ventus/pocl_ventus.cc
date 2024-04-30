@@ -94,11 +94,9 @@ static const char *ventus_final_ld_flags[] = {
   "-Wl,",
   VENTUS_INSTALL_RPEFIX_DIR,
   "/lib/riscv32clc.o ",
-  "-Wl,--gc-sections ",
-  "-L",
   VENTUS_INSTALL_RPEFIX_DIR,
-  "/lib ",
-  "-lworkitem ",
+  "/lib/workitem.o ",
+  "-Wl,--gc-sections ",
   NULL
 };
 
