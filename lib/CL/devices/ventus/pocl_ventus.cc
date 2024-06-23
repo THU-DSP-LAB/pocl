@@ -425,6 +425,8 @@ step3 prepare kernel metadata (pc(start_pc=8000) & kernel entrance(0x8000005c) &
 step4 prepare driver metadata
 step5 make a writefile for chisel
 */
+
+  POCL_MEASURE_START(prepare_arg)
   assert(cmd->device->data != NULL);
   d = (struct vt_device_data_t *)cmd->device->data;
 
@@ -646,6 +648,8 @@ step5 make a writefile for chisel
   if (err != 0) {
     abort();
   }
+
+  POCL_MEASURE_FINISH(prepare_arg)
   /**********************************************************************************************************/
 
   //after checking pocl_cache_binary, use the following to pass in.
@@ -696,6 +700,8 @@ step5 make a writefile for chisel
   /***********************************************************************************************************
    * parsing object file to obtain vmem file using assembler
    ***********************************************************************************************************/
+  POCL_MEASURE_START(obtain_vmem_file)
+
   #ifdef __linux__
 	  std::string assembler_path = CLANG;
     if(pocl_exists(assembler_path.c_str())) {
@@ -749,6 +755,8 @@ step5 make a writefile for chisel
 	c_num_buffer=c_num_buffer+1;
 	assert(c_num_buffer<=c_max_num_buffer);
   #endif
+
+  POCL_MEASURE_FINISH(obtain_vmem_file)
   /***********************************************************************************************************/
 
 
@@ -777,7 +785,7 @@ step5 make a writefile for chisel
   #endif
 
 
-
+  POCL_MEASURE_START(prepare_kernel_meta)
 //prepare kernel_metadata
   char *kernel_metadata= (char*)malloc(sizeof(char)*KNL_MAX_METADATA_SIZE);
   memset(kernel_metadata,0,KNL_MAX_METADATA_SIZE);
@@ -858,11 +866,14 @@ step5 make a writefile for chisel
     fclose(fp_data);
   #endif
 
-
+  POCL_MEASURE_FINISH(prepare_kernel_meta)
 
 //pass metadata to "run"
   // quick off kernel execution
+
+  POCL_MEASURE_START(kernel_exe)
   err = vt_start(d->vt_device, &driver_meta,0);
+
   assert(0 == err);
 
   // wait for the execution to complete
@@ -887,6 +898,9 @@ step5 make a writefile for chisel
         }
     }
 
+  POCL_MEASURE_FINISH(kernel_exe)
+
+  POCL_MEASURE_START(free_resource)
     err |= vt_one_buf_free(d->vt_device, KNL_MAX_METADATA_SIZE, &knl_dev_mem_addr, 0, 0);
     err |= vt_one_buf_free(d->vt_device, pds_src_size, &pds_dev_mem_addr, 0, 0);
     err |= vt_one_buf_free(d->vt_device, abuf_size, &arg_dev_mem_addr, 0, 0);
@@ -929,7 +943,7 @@ step5 make a writefile for chisel
   free(abuf_args_data);
   free(kernel_metadata);
 
-
+  POCL_MEASURE_FINISH(free_resource)
 
   //pocl_release_dlhandle_cache(cmd);
 
@@ -1386,6 +1400,8 @@ int pocl_ventus_build_source (cl_program program, cl_uint device_i,
 }
 
 int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
+  POCL_MEASURE_START(compile)
+
   std::string clang_path(CLANG);
 	if (!pocl_exists(clang_path.c_str())) {
     // Using VENTUS_INSTALL_PREFIX enviroment to get other clang_path
@@ -1463,6 +1479,8 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
 
 
   pocl_ventus_release_IR(program);
+
+  POCL_MEASURE_FINISH(compile)
 return 0;
 
 }
