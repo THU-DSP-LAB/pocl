@@ -472,8 +472,8 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
     num_workgroups[0]=pc->num_groups[0];num_workgroups[1]=pc->num_groups[1];num_workgroups[2]=pc->num_groups[2];
     uint64_t num_workgroup=num_workgroups[0]*num_workgroups[1]*num_workgroups[2];
     uint64_t num_processor=num_warp*num_workgroup;
-    uint64_t ldssize=0x1000;
-    uint64_t pdssize=0x1000;
+    uint64_t ldssize=0;
+    uint64_t pdssize=0;
     uint64_t pdsbase=0x8a000000;
     uint64_t start_pc=0x80000000;
     uint64_t knlbase=0x90000000;
@@ -511,6 +511,10 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
   std::vector<uint32_t> elf_data(5);
   elf_data = read_resource(meta->name);
 
+  vgpr_usage = pocl_size_ceil2_64(elf_data[0]);
+  sgpr_usage = pocl_size_ceil2_64(elf_data[1]);
+  pdssize = pocl_size_ceil2_64(elf_data[4]*num_processor*num_thread);
+  ldssize = elf_data[3] + num_processor * elf_data[2]; // for recording local argument's offset from CSR_LDS.
 
 /*
 step1 upload kernel_rom & allocate its mem (load cache file?)
@@ -532,8 +536,7 @@ step5 make a writefile for chisel
   /* Process the kernel arguments. Convert the opaque buffer
      pointers to real device pointers, allocate dynamic local
      memory buffers, etc. */
-  uint32_t tmpOffset = elf_data[3] + num_processor*elf_data[2]; // for recording local argument's offset from CSR_LDS.
-  for (i = 0; i < meta->num_args; ++i)
+    for (i = 0; i < meta->num_args; ++i)
     {
       pocl_argument* al = &(cmd->command.run.arguments[i]);
       if (ARG_IS_LOCAL(meta->arg_info[i]))
@@ -542,12 +545,13 @@ step5 make a writefile for chisel
             {
               arguments[i] = malloc (sizeof (void *));
               uint64_t tmp_addr;
-              POCL_MSG_PRINT_VENTUS("Allocating buffer to store address of local argument:");
+              POCL_MSG_PRINT_VENTUS("Allocating buffer to store address of local argument:\n");
               err = vt_buf_alloc(d->vt_device, sizeof(al->size), &tmp_addr,0,0,0);
-              uint64_t tmpLocalSize = tmpOffset;
-              vt_copy_to_dev(d->vt_device, tmp_addr, &(tmpLocalSize), sizeof(tmpLocalSize),0,0);
-              tmpOffset += al->size;
-              ((void **)arguments)[i] = &tmpLocalSize;
+              POCL_MSG_PRINT_VENTUS("size of tmpLocalSize:%d\n", ldssize);
+              vt_copy_to_dev(d->vt_device, tmp_addr, &(ldssize), sizeof(ldssize),0,0);
+              POCL_MSG_PRINT_VENTUS("size of local argu:%d\n", al->size);
+              memcpy(arguments[i], &ldssize, 8);
+              ldssize += al->size;
             }
           else
             {
@@ -581,6 +585,7 @@ step5 make a writefile for chisel
                   ptr = malloc(sizeof(uint64_t));
                   memcpy(ptr,m->device_ptrs[cmd->device->global_mem_id].mem_ptr,sizeof(uint64_t));
 
+                  POCL_MSG_PRINT_VENTUS("Allocating kernel argument to address %lx\n", *(uint64_t*)ptr);
                   #ifdef PRINT_CHISEL_TESTCODE
                     if (m->device_ptrs[cmd->device->global_mem_id].extra == 0) {
                         c_buffer_base[c_num_buffer] = *((uint64_t *) ptr);
