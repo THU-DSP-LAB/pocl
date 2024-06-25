@@ -45,6 +45,12 @@
 #include <fstream>
 #include <algorithm>
 #include <map>
+#include <iostream>
+#include <vector>
+#include <cstdint>
+#include <elf.h>
+#include <bitset>
+#include <iomanip>
 
 #include "pocl_cache.h"
 #include "pocl_file_util.h"
@@ -357,6 +363,81 @@ void fp_write_file(FILE *fp,void *p,uint64_t size){
 }
 #endif
 
+
+
+std::vector<uint32_t> read_resource(const char* kernel_name) {
+  const char* filename = "object.riscv";
+  std::ifstream file(filename, std::ios::binary);
+
+  if (!file.is_open()) {
+    std::cerr << "Failed to open file: " << filename << std::endl;
+    return {};
+  }
+
+  // Read the ELF header
+  Elf32_Ehdr elfHeader;
+  file.read(reinterpret_cast<char*>(&elfHeader), sizeof(elfHeader));
+
+  // Read the section headers
+  std::vector<Elf32_Shdr> sectionHeaders(elfHeader.e_shnum);
+  file.seekg(elfHeader.e_shoff, std::ios::beg);
+  file.read(reinterpret_cast<char*>(sectionHeaders.data()), elfHeader.e_shnum * sizeof(Elf32_Shdr));
+
+  // Find the .ventus.resource.matadd section
+  Elf32_Off sectionOffset = 0;
+  Elf32_Word sectionSize = 0;
+  std::string targetSectionName = std::string(".ventus.resource.") + kernel_name;
+
+  // Read the section header string table
+  Elf32_Shdr& shstrtabHeader = sectionHeaders[elfHeader.e_shstrndx];
+  std::vector<char> shstrtab(shstrtabHeader.sh_size);
+  file.seekg(shstrtabHeader.sh_offset, std::ios::beg);
+  file.read(shstrtab.data(), shstrtabHeader.sh_size);
+
+  for (const auto& section : sectionHeaders) {
+    std::string sectionName(shstrtab.data() + section.sh_name);
+    if (sectionName == targetSectionName) {
+      sectionOffset = section.sh_offset;
+      sectionSize = section.sh_size;
+      break;
+    }
+  }
+
+  if (sectionOffset == 0 || sectionSize == 0) {
+    std::cerr << "Section " << targetSectionName << " not found in the ELF file." << std::endl;
+    return {};
+  }
+
+  // Read the .ventus.resource.matadd section data
+  file.seekg(sectionOffset, std::ios::beg);
+  std::vector<uint8_t> sectionData(sectionSize);
+  file.read(reinterpret_cast<char*>(sectionData.data()), sectionSize);
+
+
+  // Check that the section size is even
+  if (sectionSize % 2 != 0) {
+    std::cerr << "Section size is not even, cannot interpret as 16-bit values." << std::endl;
+    return {};
+  }
+
+  // Convert 16-bit values to 32-bit values (assuming little-endian)
+  std::vector<uint32_t> values(sectionSize / 2);
+  for (size_t i = 0; i < sectionSize / 2; ++i) {
+    uint16_t low = static_cast<uint16_t>(sectionData[i*2]);
+    uint16_t high = static_cast<uint16_t>(sectionData[i*2+1]);
+    values[i] = (static_cast<uint32_t>(high) << 8) | low;
+  }
+
+  // Print the values
+  std::cout << "Values in .ventus.resource.matadd:" << std::endl;
+  for (const auto& value : values) {
+    std::cout << value << std::endl;
+  }
+
+  return values;
+}
+
+
 void
 pocl_ventus_run (void *data, _cl_command_node *cmd)
 {
@@ -418,6 +499,20 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
 #endif
 
 /*
+ * read .ventus.resource.<kernel_name> which data include:
+ * struct SubVentusProgramInfo
+ *  uint32 t VGPRUsage =0:// The number of VGPRs which has been used
+ *  uint32 t SGPRUsage =0:// The number of SGPRs which has been used
+ *  uint32 t LocalSpill=0;// Size of SGPR spill to local memory
+ *  uint32 t LocalMemoryUse =0;// Used local memory size
+ *  uint32 t PrivateSpill =0:// Size of VGPR spill to private memory
+ *
+ */
+  std::vector<uint32_t> elf_data(5);
+  elf_data = read_resource(meta->name);
+
+
+/*
 step1 upload kernel_rom & allocate its mem (load cache file?)
 step2 allocate kernel argument & arg buffer
       notice kernel arg buffer is offered by command.run.
@@ -437,6 +532,7 @@ step5 make a writefile for chisel
   /* Process the kernel arguments. Convert the opaque buffer
      pointers to real device pointers, allocate dynamic local
      memory buffers, etc. */
+  uint32_t tmpOffset = elf_data[3] + num_processor*elf_data[2]; // for recording local argument's offset from CSR_LDS.
   for (i = 0; i < meta->num_args; ++i)
     {
       pocl_argument* al = &(cmd->command.run.arguments[i]);
@@ -444,35 +540,14 @@ step5 make a writefile for chisel
         {
           if (cmd->device->device_alloca_locals)
             {
-              /* Local buffers are allocated in the device side work-group
-                 launcher. Let's pass only the sizes of the local args in
-                 the arg buffer. */
-                void* tmp_arg = malloc(al->size);
-                memset(tmp_arg,0,al->size);
-                if(al->value != nullptr)
-                    memcpy(tmp_arg, al->value, al->size);
-                uint64_t aligned_size = (al->size / 4096 + 1)*4096;
-                new_lds_base -= aligned_size;
-                memcpy(&local_arg[i], &new_lds_base, sizeof(uint32_t));
-                printf("new_lds_base:%08lx\n", new_lds_base);
-                err = vt_copy_to_dev(d->vt_device, new_lds_base, tmp_arg, aligned_size,0,0);
-                if (err != 0) {
-                    abort();
-                }
-                #ifdef PRINT_CHISEL_TESTCODE
-                  c_buffer_base[c_num_buffer] = new_lds_base;
-                  c_buffer_size[c_num_buffer] = al->size;
-                  c_buffer_allocsize[c_num_buffer] = aligned_size;
-                  c_num_buffer = c_num_buffer + 1;
-                  assert(c_num_buffer <= c_max_num_buffer);
-                  void* zero_data = malloc(al->size*sizeof(uint64_t));
-                  memset(zero_data,0,al->size);
-                  fp_write_file(fp_data, zero_data, al->size);
-                  free(tmp_arg);
-
-                #endif
-              printf("not support local buffer arg yet.\n");
-              //arguments[i] = (void *)al->size;
+              arguments[i] = malloc (sizeof (void *));
+              uint64_t tmp_addr;
+              POCL_MSG_PRINT_VENTUS("Allocating buffer to store address of local argument:");
+              err = vt_buf_alloc(d->vt_device, sizeof(al->size), &tmp_addr,0,0,0);
+              uint64_t tmpLocalSize = tmpOffset;
+              vt_copy_to_dev(d->vt_device, tmp_addr, &(tmpLocalSize), sizeof(tmpLocalSize),0,0);
+              tmpOffset += al->size;
+              ((void **)arguments)[i] = &tmpLocalSize;
             }
           else
             {
@@ -552,37 +627,15 @@ step5 make a writefile for chisel
         }
     }
 
-  if (cmd->device->device_alloca_locals)
-    {
-      printf("notice that ventus hasn't support local buffer as argument yet.\n");
-      /* Local buffers are allocated in the device side work-group
-         launcher. Let's pass only the sizes of the local args in
-         the arg buffer. */
-      for (i = 0; i < meta->num_locals; ++i)
-        {
-          size_t s = meta->local_sizes[i]; //TODO: create local_buf at ddr, and map argument to this addr.
-          size_t j = meta->num_args + i;
-        }
-    }
-  else
-    {
-      for (i = 0; i < meta->num_locals; ++i)
-        {
-          size_t s = meta->local_sizes[i];
-          size_t j = meta->num_args + i;
-          arguments[j] = malloc (sizeof (void *));
-          void *pp = pocl_aligned_malloc (MAX_EXTENDED_ALIGNMENT, s);
-          *(void **)(arguments[j]) = pp;
-        }
-    }
 
-  /*pc->printf_buffer = d->printf_buffer;
-  assert (pc->printf_buffer != NULL);
-  pc->printf_buffer_capacity = cmd->device->printf_buffer_size;
-  assert (pc->printf_buffer_capacity > 0);
-  uint32_t position = 0;
-  pc->printf_buffer_position = &position;
-  pc->global_var_buffer = program->gvar_storage[dev_i];*/
+    for (i = 0; i < meta->num_locals; ++i)
+      {
+        size_t s = meta->local_sizes[i];
+        size_t j = meta->num_args + i;
+        arguments[j] = malloc (sizeof (void *));
+        void *pp = pocl_aligned_malloc (MAX_EXTENDED_ALIGNMENT, s);
+        *(void **)(arguments[j]) = pp;
+      }
 
   /**********************************************************************************************************
    * create argument buffer now.
@@ -611,7 +664,8 @@ step5 make a writefile for chisel
   for(i = 0; i < meta->num_args; ++i) {
       pocl_argument* al = &(cmd->command.run.arguments[i]);
       if (ARG_IS_LOCAL(meta->arg_info[i])&& cmd->device->device_alloca_locals) {
-        memcpy(abuf_args_data+abuf_args_p,&local_arg[i],4);
+        size_t alloc_p = pocl_align_value(abuf_args_p, 4);
+        memcpy(abuf_args_data+alloc_p,arguments[i],4);
         abuf_args_p+=4;
       } else
       if ((meta->arg_info[i].type == POCL_ARG_TYPE_POINTER)
