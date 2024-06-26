@@ -503,8 +503,9 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
  * struct SubVentusProgramInfo
  *  uint32 t VGPRUsage =0:// The number of VGPRs which has been used
  *  uint32 t SGPRUsage =0:// The number of SGPRs which has been used
- *  uint32 t LocalSpill=0;// Size of SGPR spill to local memory
+ *  uint32 t LocalStackCapacity = 0x400;// Capacity of stack for one wrap
  *  uint32 t LocalMemoryUse =0;// Used local memory size
+ *  uint32 t LocalSpill=0;// Size of SGPR spill to local memory
  *  uint32 t PrivateSpill =0:// Size of VGPR spill to private memory
  *
  */
@@ -513,7 +514,7 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
 
   vgpr_usage = pocl_size_ceil2_64(elf_data[0]);
   sgpr_usage = pocl_size_ceil2_64(elf_data[1]);
-  pdssize = pocl_size_ceil2_64(elf_data[4]*num_processor*num_thread);
+  pdssize = pocl_size_ceil2_64(elf_data[5]*num_processor*num_thread);
   ldssize = elf_data[3] + num_processor * elf_data[2]; // for recording local argument's offset from CSR_LDS.
 
 /*
