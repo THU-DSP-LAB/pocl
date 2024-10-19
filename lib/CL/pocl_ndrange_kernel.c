@@ -395,7 +395,14 @@ pocl_ndrange_kernel_common (
   errcode = POname (clRetainKernel) (kernel);
   if (errcode != CL_SUCCESS)
     goto ERROR;
-
+  // char *h_ptr = (char *)malloc(16);
+  // cl_mem m = (*(cl_mem *)(kernel->dyn_arguments[0].value));
+  // clEnqueueReadBuffer(command_queue, m, CL_TRUE, 0, 16, h_ptr, 0, NULL, NULL);
+  // printf("before copy:\n");
+  // for (int k = 0; k < 16; k++) {
+  //   printf("%d ", ((char *)h_ptr)[k]);
+  // }
+  // free(h_ptr);
   errcode = pocl_kernel_copy_args (kernel, &(*cmd)->command.run);
   if (errcode != CL_SUCCESS)
     goto ERROR;

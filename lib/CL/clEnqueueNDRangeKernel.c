@@ -61,20 +61,25 @@ POname(clEnqueueNDRangeKernel)(cl_command_queue command_queue,
   int errcode = 0;
 
   _cl_command_node *cmd;
-
+  // char *h_ptr = (char *)malloc(16);
+  // cl_mem m = (*(cl_mem *)(kernel->dyn_arguments[0].value));
+  // clEnqueueReadBuffer(command_queue, m, CL_TRUE, 0, 16, h_ptr, 0, NULL, NULL);
+  // printf("step into clEnqueueNDRangeKernel:\n");
+  // for (int k = 0; k < 16; k++) {
+  //   printf("%d ", ((char *)h_ptr)[k]);
+  // }
+  // free(h_ptr);
   errcode = pocl_ndrange_kernel_common (
       NULL, command_queue, NULL, kernel, work_dim, global_work_offset,
       global_work_size, local_work_size, num_events_in_wait_list,
       event_wait_list, event, NULL, NULL, &cmd);
   POCL_RETURN_ERROR_COND (errcode != CL_SUCCESS, errcode);
-
   if (pocl_cq_profiling_enabled)
     {
       pocl_cq_profiling_register_event (cmd->sync.event.event);
       POname(clRetainKernel) (kernel);
       cmd->sync.event.event->meta_data->kernel = kernel;
     }
-
   pocl_command_enqueue (command_queue, cmd);
   return CL_SUCCESS;
 }
