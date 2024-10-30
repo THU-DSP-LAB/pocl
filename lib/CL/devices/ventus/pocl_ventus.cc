@@ -733,7 +733,7 @@ step5 make a writefile for chisel
 	//pass in vmem file
 	char binary_filename[256];
         strcpy(binary_filename, filename);
-        strcat(binary_filename, ".riscv");
+        strcat(binary_filename, ".vmem");
 	///将text段搬到ddr(not related to spike),并且起始地址必须是0x80000000(spike专用)，verilator需要先解析出vmem,然后上传程序段
 	vt_upload_kernel_file(d->vt_device,binary_filename,0);
   #ifdef PRINT_CHISEL_TESTCODE
