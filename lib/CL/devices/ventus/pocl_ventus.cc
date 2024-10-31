@@ -367,6 +367,14 @@ void fp_write_file(FILE *fp,void *p,uint64_t size){
 }
 #endif
 
+uint64_t* convertToUint64(const uint32_t* originalArray, size_t size) {
+    uint64_t* newArray = new uint64_t[size];
+    for (size_t i = 0; i < size; ++i) {
+        newArray[i] = static_cast<uint64_t>(originalArray[i]);
+    }
+    return newArray;
+}
+
 void
 pocl_ventus_run (void *data, _cl_command_node *cmd)
 {
@@ -843,6 +851,11 @@ step5 make a writefile for chisel
     driver_meta.vgprUsage=vgpr_usage;
     driver_meta.pdsBaseAddr=pdsbase;
 
+    uint64_t work_dim_64 = static_cast<uint64_t>(pc->work_dim);
+    uint64_t* global_size_64 = convertToUint64(global_size_32,3);
+    uint64_t* local_size_64 = convertToUint64(local_size_32,3);
+    uint64_t* global_offset_64 = convertToUint64(global_offset_32,3);
+
 // prepare a write function
 
   #ifdef PRINT_CHISEL_TESTCODE
@@ -858,6 +871,10 @@ step5 make a writefile for chisel
     fp_write_file(fp_metadata,&(driver_meta.sgprUsage),sizeof(uint64_t));
     fp_write_file(fp_metadata,&(driver_meta.vgprUsage),sizeof(uint64_t));
     fp_write_file(fp_metadata,&(driver_meta.pdsBaseAddr),sizeof(uint64_t));
+    fp_write_file(fp_metadata,&work_dim_64,sizeof(uint64_t));
+    fp_write_file(fp_metadata,global_size_64,sizeof(uint64_t)*3);
+    fp_write_file(fp_metadata,local_size_64,sizeof(uint64_t)*3);
+    fp_write_file(fp_metadata,global_offset_64,sizeof(uint64_t)*3);
     fp_write_file(fp_metadata,&(c_num_buffer),sizeof(uint64_t));
     for(int i=0;i<c_num_buffer;i++)  fp_write_file(fp_metadata,&c_buffer_base[i],sizeof(uint64_t));
     for(int i=0;i<c_num_buffer;i++)  fp_write_file(fp_metadata,&c_buffer_size[i],sizeof(uint64_t));
