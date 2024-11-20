@@ -265,7 +265,11 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
 
   char extensions[1024];
   extensions[0] = 0;
-  strcat (extensions, "cl_khr_fp64");
+  strcat (extensions, "cl_khr_fp64"
+                      " cl_khr_global_int32_base_atomics"
+                      " cl_khr_global_int32_extended_atomics"
+                      " cl_khr_local_int32_base_atomics"
+                      " cl_khr_local_int32_extended_atomics");
   dev->extensions = strdup (extensions);
 
 
@@ -1485,7 +1489,8 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
 #ifdef POCL_DEBUG_FLAG_GENERAL
 	ss_cmd << " -w ";
 #endif
-  ss_cmd << " -D__opencl_c_generic_address_space=1 -D__opencl_c_named_address_space_builtins=1 ";
+  ss_cmd << " -D__opencl_c_generic_address_space=1 -D__opencl_c_named_address_space_builtins=1";
+  ss_cmd << " -Dcl_khr_global_int32_base_atomics -Dcl_khr_global_int32_extended_atomics -Dcl_khr_local_int32_base_atomics -Dcl_khr_local_int32_extended_atomics";
   ss_cmd << " -D__OPENCL_VERSION__=" << device->version_as_int << " ";
 	ss_cmd << program->compiler_options << std::endl;
 	POCL_MSG_PRINT_VENTUS("running \"%s\"\n", ss_cmd.str().c_str());
