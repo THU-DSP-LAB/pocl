@@ -505,6 +505,12 @@ int pocl_llvm_build_program(cl_program program,
 
   // the per-file types don't seem to override this
   la->OpenCLVersion = cl_std_i;
+
+  // Enable OpenCL generic address space for OpenCL 2.0 and later
+  if (la->OpenCL && cl_std_i >= 200) {
+    la->OpenCLGenericAddressSpace = true;
+  }
+
   la->FakeAddressSpaceMap = false;
   la->Blocks = true; //-fblocks
   la->MathErrno = false; // -fno-math-errno
