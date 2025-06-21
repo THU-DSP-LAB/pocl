@@ -64,7 +64,7 @@
 #include "pocl_ventus.h"
 //#endif
 
-#define VENTUS_INSTALL_RPEFIX_DIR getenv("VENTUS_INSTALL_PREFIX")
+#define VENTUS_INSTALL_PREFIX_DIR getenv("VENTUS_INSTALL_PREFIX")
 
   /* ENABLE_LLVM means to compile the kernel using pocl compiler,
  but for ventus(ventus has its own LLVM) it should be OFF. */
@@ -90,14 +90,14 @@
 static const char *ventus_final_ld_flags[] = {
   "-nodefaultlibs ",
   "-Wl,",
-  VENTUS_INSTALL_RPEFIX_DIR,
+  VENTUS_INSTALL_PREFIX_DIR,
   "/lib/crt0.o ",
   "-Wl,",
-  VENTUS_INSTALL_RPEFIX_DIR,
+  VENTUS_INSTALL_PREFIX_DIR,
   "/lib/riscv32clc.o ",
   "-Wl,--gc-sections ",
   "-L",
-  VENTUS_INSTALL_RPEFIX_DIR,
+  VENTUS_INSTALL_PREFIX_DIR,
   "/lib ",
   "-lworkitem ",
   NULL
@@ -105,11 +105,11 @@ static const char *ventus_final_ld_flags[] = {
 
 static const char *ventus_other_compile_flags[] = {
   "-I",
-  VENTUS_INSTALL_RPEFIX_DIR,
+  VENTUS_INSTALL_PREFIX_DIR,
   "include/clc ",
   "-O1 ",
   "-Wl,-T,",
-  VENTUS_INSTALL_RPEFIX_DIR,
+  VENTUS_INSTALL_PREFIX_DIR,
   "/lib/ldscripts/ventus/elf32lriscv.ld ",
   NULL
 };
@@ -731,9 +731,13 @@ step5 make a writefile for chisel
     if(pocl_exists(assembler_path.c_str())) {
       assembler_path = assembler_path.substr(0,assembler_path.length()-6);
 	    assembler_path += "/../../assemble.sh";
+      if(!pocl_exists(assembler_path.c_str())) {
+        goto ASSEMBLER_FALLBACK;
+      }
     }
     else {
-      std::string ventus_assembler(VENTUS_INSTALL_RPEFIX_DIR);
+ASSEMBLER_FALLBACK:
+      std::string ventus_assembler(VENTUS_INSTALL_PREFIX_DIR);
       ventus_assembler += "/lib/scripts/assemble.sh";
       assembler_path = ventus_assembler;
       assert(pocl_exists(ventus_assembler.c_str()));
@@ -1436,8 +1440,8 @@ int pocl_ventus_build_source (cl_program program, cl_uint device_i,
 int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
   std::string clang_path(CLANG);
 	if (!pocl_exists(clang_path.c_str())) {
-    // Using VENTUS_INSTALL_PREFIX enviroment to get other clang_path
-    std::string ventus_install_prefix(VENTUS_INSTALL_RPEFIX_DIR);
+    // Using VENTUS_INSTALL_PREFIX environment to get other clang_path
+    std::string ventus_install_prefix(VENTUS_INSTALL_PREFIX_DIR);
     std::string clang_install_path = ventus_install_prefix + "/bin/clang";
     clang_path = clang_install_path;
     if(!pocl_exists(clang_install_path .c_str())) {
