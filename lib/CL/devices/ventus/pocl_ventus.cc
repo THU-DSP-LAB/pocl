@@ -293,10 +293,12 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   dev->image3d_max_width = 1024; // TODO: Update
 
   dev->max_work_item_dimensions = 3;
-  dev->max_work_group_size = 1024;
-  dev->max_work_item_sizes[0] = 1024;
-  dev->max_work_item_sizes[1] = 1024;
-  dev->max_work_item_sizes[2] = 1024;
+  // RTL and cyclesim: repo default 8-warp 32-thread
+  // TODO: load hardware info from hardware (simulator)
+  dev->max_work_group_size = 8*32;
+  dev->max_work_item_sizes[0] = 8*32;
+  dev->max_work_item_sizes[1] = 8*32;
+  dev->max_work_item_sizes[2] = 8*32;
   dev->execution_capabilities = CL_EXEC_KERNEL;
   dev->on_host_queue_props = CL_QUEUE_PROFILING_ENABLE;
   dev->max_parameter_size = 1024;
