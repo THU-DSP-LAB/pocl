@@ -129,7 +129,7 @@ pocl_ventus_init_device_ops(struct pocl_device_ops *ops)
   ops->probe = pocl_ventus_probe;
 
   ops->uninit = pocl_ventus_uninit;
-  ops->reinit = NULL;
+  ops->reinit = pocl_ventus_reinit;
   ops->init = pocl_ventus_init;
 
   ops->alloc_mem_obj = pocl_ventus_alloc_mem_obj;
@@ -988,6 +988,13 @@ pocl_ventus_uninit (unsigned j, cl_device_id device)
   device->data = NULL;
 
   return CL_SUCCESS;
+}
+
+cl_int
+pocl_ventus_reinit (unsigned j, cl_device_id device)
+{
+  // Simple reinit implementation for ventus device
+  return pocl_ventus_init(j, device, NULL);
 }
 
 
