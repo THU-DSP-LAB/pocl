@@ -129,7 +129,7 @@ pocl_ventus_init_device_ops(struct pocl_device_ops *ops)
   ops->probe = pocl_ventus_probe;
 
   ops->uninit = pocl_ventus_uninit;
-  ops->reinit = NULL;
+  ops->reinit = pocl_ventus_reinit;
   ops->init = pocl_ventus_init;
 
   ops->alloc_mem_obj = pocl_ventus_alloc_mem_obj;
@@ -996,6 +996,31 @@ pocl_ventus_uninit (unsigned j, cl_device_id device)
   return CL_SUCCESS;
 }
 
+cl_int
+pocl_ventus_reinit (unsigned j, cl_device_id device)
+{
+  struct vt_device_data_t *d;
+  int err;
+
+  d = (struct vt_device_data_t *) calloc (1, sizeof (struct vt_device_data_t));
+  if (d == NULL)
+    return CL_OUT_OF_HOST_MEMORY;
+
+  vt_device_h vt_device;
+  err = vt_dev_open(&vt_device);
+  if (err != 0) {
+    free(d);
+    return CL_DEVICE_NOT_FOUND;
+  }
+
+  d->vt_device = vt_device;
+  d->current_kernel = NULL;
+
+  POCL_INIT_LOCK (d->cq_lock);
+  device->data = d;
+
+  return CL_SUCCESS;
+}
 
 void ventus_command_scheduler (struct vt_device_data_t *d)
 {
