@@ -31,10 +31,13 @@
 #include "pocl_util.h"
 #include "topology/pocl_topology.h"
 #include "utlist.h"
+#include "loadelf.hpp"
 
 #include <assert.h>
+#include <cstdint>
 #include <ctype.h>
 #include <limits.h>
+#include <spdlog/spdlog.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -366,9 +369,13 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
 
   return ret;
 }
+
 #define PRINT_CHISEL_TESTCODE
+// 用于生成metadata/data文件
+std::vector<MemBlock> g_vt_dump_mem;
 #ifdef PRINT_CHISEL_TESTCODE
-void fp_write_file(FILE *fp,void *p,uint64_t size){
+
+void fp_write_file(FILE *fp, const void *p, uint64_t size){
   for (size_t i = 0; i < (size+sizeof(uint32_t)-1) / sizeof(uint32_t); ++i)
     fprintf(fp,"%08x\n",*((uint32_t*)p+i));
 }
@@ -425,19 +432,12 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
     uint64_t local_arg[meta->num_args];
 
 #ifdef PRINT_CHISEL_TESTCODE
-    uint64_t c_num_buffer=0;
-    uint64_t c_max_num_buffer=1024;
-    uint64_t c_buffer_base[c_max_num_buffer];
-    uint64_t c_buffer_size[c_max_num_buffer];
-    uint64_t c_buffer_allocsize[c_max_num_buffer];
     std::string metadata_name_s = std::string(meta->name)+"_"+std::to_string(knl_name_list[meta->name])+".metadata";
     const char *c_metadata_name = metadata_name_s.c_str();
     std::string data_name_s = std::string(meta->name)+"_"+std::to_string(knl_name_list[meta->name])+".data";
     const char *c_data_name = data_name_s.c_str();
     FILE *fp_metadata=fopen(c_metadata_name,"w");
     FILE *fp_data=fopen(c_data_name,"w");
-
-    //assume that chisel_test won't use cases with 32 or more input buffer.
 #endif
 
 /*
@@ -483,16 +483,7 @@ step5 make a writefile for chisel
                     abort();
                 }
                 #ifdef PRINT_CHISEL_TESTCODE
-                  c_buffer_base[c_num_buffer] = new_lds_base;
-                  c_buffer_size[c_num_buffer] = al->size;
-                  c_buffer_allocsize[c_num_buffer] = aligned_size;
-                  c_num_buffer = c_num_buffer + 1;
-                  assert(c_num_buffer <= c_max_num_buffer);
-                  void* zero_data = malloc(al->size*sizeof(uint64_t));
-                  memset(zero_data,0,al->size);
-                  fp_write_file(fp_data, zero_data, al->size);
-                  free(tmp_arg);
-
+                  assert(0); // Not support local buffer arg yet.
                 #endif
               POCL_MSG_WARN("not support local buffer arg yet.\n");
               //arguments[i] = (void *)al->size;
@@ -527,25 +518,6 @@ step5 make a writefile for chisel
                   ptr = malloc(sizeof(uint64_t));
                   memcpy(ptr,m->device_ptrs[cmd->device->global_mem_id].mem_ptr,sizeof(uint64_t));
                   *(uint64_t*)ptr += al->offset;
-
-                  #ifdef PRINT_CHISEL_TESTCODE
-                    if (m->device_ptrs[cmd->device->global_mem_id].extra == 0) {
-                        c_buffer_base[c_num_buffer] = *((uint64_t *) ptr);
-                        c_buffer_size[c_num_buffer] = m->size;
-                        c_buffer_allocsize[c_num_buffer] = m->size;
-                        c_num_buffer = c_num_buffer + 1;
-                        assert(c_num_buffer <= c_max_num_buffer);
-                        if(m->mem_host_ptr)
-                            fp_write_file(fp_data, (m->mem_host_ptr), m->size);
-                        else {
-                            void* zero_data = malloc(m->size*sizeof(uint64_t));
-                            memset(zero_data,0,m->size);
-                            fp_write_file(fp_data, zero_data, m->size);
-                            delete static_cast<uint64_t*>(zero_data);
-                        }
-                        m->device_ptrs[cmd->device->global_mem_id].extra++;
-                    }
-                  #endif
                 }
                 ((void **)arguments)[i] = ptr;
             }
@@ -661,12 +633,8 @@ step5 make a writefile for chisel
   }
 
   #ifdef PRINT_CHISEL_TESTCODE
-    c_buffer_base[c_num_buffer]=arg_dev_mem_addr;
-    c_buffer_size[c_num_buffer]=abuf_size;
-    c_buffer_allocsize[c_num_buffer]=abuf_size;
-    c_num_buffer=c_num_buffer+1;
-    assert(c_num_buffer<=c_max_num_buffer);
-    fp_write_file(fp_data,abuf_args_data,abuf_size);
+    g_vt_dump_mem.emplace_back(arg_dev_mem_addr, abuf_size);
+    g_vt_dump_mem.back().data.assign(abuf_args_data, abuf_args_data + abuf_size);
   #endif
 
   if (abuf_size > 0) {
@@ -760,34 +728,10 @@ ASSEMBLER_FALLBACK:
 	///将text段搬到ddr(not related to spike),并且起始地址必须是0x80000000(spike专用)，verilator需要先解析出vmem,然后上传程序段
 	vt_upload_kernel_file(d->vt_device,binary_filename,0);
   #ifdef PRINT_CHISEL_TESTCODE
-    //this file includes all kernels of executable file, kernel actually to be executed is determined by metadata.
-        char vmem_filename[256];
-        strcpy(vmem_filename, filename);
-	std::ifstream vmem_file(strcat(vmem_filename, ".vmem"));
-	vmem_file.seekg(0, vmem_file.end);
-	auto size = vmem_file.tellg();
-	std::string content;
-	content.resize(size);
-	vmem_file.seekg(0, vmem_file.beg);
-	vmem_file.read(&content[0], size);
-	content.erase(std::remove(content.begin(), content.end(), '\n'), content.end());
-	int vmem_line_count = content.length() / 8;
-	uint32_t* vmem_content = new uint32_t[vmem_line_count];
-	for (int i = 0; i < vmem_line_count; i++) {
-		std::string substring = (content).substr(i * 8, 8); // 每次提取8个字符
-		unsigned int value = std::stoul(substring, nullptr, 16); // 转换为无符号整数
-		memcpy(vmem_content + i, &value, sizeof(uint32_t)); // 复制到数组中
-	}
-	fp_write_file(fp_data,vmem_content, vmem_line_count*sizeof(uint32_t));
+  // this elf file includes all kernels of executable file, kernel actually to be executed is determined by metadata.
 	fp_write_file(fp_metadata, &(pc_dev_mem_addr), sizeof(uint64_t));
-	delete []vmem_content;
-	content.clear();
-
-	c_buffer_base[c_num_buffer]=pc_dev_mem_addr;
-	c_buffer_size[c_num_buffer]=vmem_line_count*sizeof(uint32_t);
-	c_buffer_allocsize[c_num_buffer]=pc_src_size;
-	c_num_buffer=c_num_buffer+1;
-	assert(c_num_buffer<=c_max_num_buffer);
+  std::vector<MemBlock> elf_data = get_data_from_elf(binary_filename, nullptr);
+  g_vt_dump_mem.insert(g_vt_dump_mem.end(), elf_data.begin(), elf_data.end());
   #endif
   /***********************************************************************************************************/
 
@@ -809,11 +753,7 @@ ASSEMBLER_FALLBACK:
     abort();
   }
   #ifdef PRINT_CHISEL_TESTCODE
-    c_buffer_base[c_num_buffer]=pds_dev_mem_addr;
-    c_buffer_size[c_num_buffer]=0;
-    c_buffer_allocsize[c_num_buffer]=pds_src_size;
-    c_num_buffer=c_num_buffer+1;
-    assert(c_num_buffer<=c_max_num_buffer);
+    g_vt_dump_mem.emplace_back(pds_dev_mem_addr, pds_src_size);
   #endif
 
 
@@ -848,14 +788,9 @@ ASSEMBLER_FALLBACK:
   if (err != 0) {
     abort();
   }
-  POCL_MSG_PRINT_VENTUS("kernel metadata has been written to 0x%x\n", knl_dev_mem_addr);
+  POCL_MSG_PRINT_VENTUS("kernel metadata has been written to 0x%lx\n", knl_dev_mem_addr);
   #ifdef PRINT_CHISEL_TESTCODE
-    c_buffer_base[c_num_buffer]=knl_dev_mem_addr;
-    c_buffer_size[c_num_buffer]=KNL_MAX_METADATA_SIZE;
-    c_buffer_allocsize[c_num_buffer]=KNL_MAX_METADATA_SIZE;
-    c_num_buffer=c_num_buffer+1;
-    assert(c_num_buffer<=c_max_num_buffer);
-    fp_write_file(fp_data,kernel_metadata,KNL_MAX_METADATA_SIZE);
+  g_vt_dump_mem.emplace_back(knl_dev_mem_addr, KNL_MAX_METADATA_SIZE, std::vector<uint8_t>(kernel_metadata, kernel_metadata + KNL_MAX_METADATA_SIZE));
   #endif
 
 
@@ -890,10 +825,20 @@ ASSEMBLER_FALLBACK:
     fp_write_file(fp_metadata,&(driver_meta.sgprUsage),sizeof(uint64_t));
     fp_write_file(fp_metadata,&(driver_meta.vgprUsage),sizeof(uint64_t));
     fp_write_file(fp_metadata,&(driver_meta.pdsBaseAddr),sizeof(uint64_t));
-    fp_write_file(fp_metadata,&(c_num_buffer),sizeof(uint64_t));
-    for(int i=0;i<c_num_buffer;i++)  fp_write_file(fp_metadata,&c_buffer_base[i],sizeof(uint64_t));
-    for(int i=0;i<c_num_buffer;i++)  fp_write_file(fp_metadata,&c_buffer_size[i],sizeof(uint64_t));
-    for(int i=0;i<c_num_buffer;i++)  fp_write_file(fp_metadata,&c_buffer_allocsize[i],sizeof(uint64_t));
+    uint64_t num_buffer = g_vt_dump_mem.size();
+    fp_write_file(fp_metadata, &num_buffer, sizeof(uint64_t));
+    for (const auto& buf : g_vt_dump_mem) {
+      fp_write_file(fp_metadata, &buf.vaddr, sizeof(uint64_t));
+    }
+    for (const auto& buf : g_vt_dump_mem) {
+      uint64_t data_size = buf.data.size();
+      fp_write_file(fp_metadata, &data_size, sizeof(uint64_t));
+      fp_write_file(fp_data, buf.data.data(), buf.data.size());
+    }
+    for (const auto& buf : g_vt_dump_mem) {
+      fp_write_file(fp_metadata, &buf.memsz, sizeof(uint64_t));
+    }
+    g_vt_dump_mem.clear();
     fclose(fp_metadata);
     fclose(fp_data);
   #endif
@@ -985,7 +930,7 @@ pocl_ventus_uninit (unsigned j, cl_device_id device)
 {
   struct vt_device_data_t *d = (struct vt_device_data_t*)device->data;
   if (NULL == d)
-  return CL_SUCCESS;
+    return CL_SUCCESS;
 
   vt_dev_close(d->vt_device);
 
@@ -1171,6 +1116,8 @@ pocl_ventus_alloc_mem_obj(cl_device_id device, cl_mem mem_obj, void *host_ptr) {
       if (err != 0) {
         return CL_MEM_OBJECT_ALLOCATION_FAILURE;
       }
+      g_vt_dump_mem.emplace_back(dev_mem_addr, mem_obj->size);
+      g_vt_dump_mem.back().data.assign((uint8_t*)mem_obj->mem_host_ptr, (uint8_t*)mem_obj->mem_host_ptr + mem_obj->size);
     }
   }
 
@@ -1201,6 +1148,11 @@ void pocl_ventus_write(void *data,
   struct vt_device_data_t *d = (struct vt_device_data_t *)data;
   int err = vt_copy_to_dev(d->vt_device,*((uint64_t*)(dst_mem_id->mem_ptr))+offset,host_ptr,size,0,0);
   assert(0 == err);
+  #ifdef PRINT_CHISEL_TESTCODE
+  uint64_t dev_addr = *((uint64_t*)(dst_mem_id->mem_ptr)) + offset;
+  g_vt_dump_mem.emplace_back(dev_addr, size);
+  g_vt_dump_mem.back().data.assign((uint8_t*)host_ptr, (uint8_t*)host_ptr + size);
+  #endif // PRINT_CHISEL_TESTCODE
 }
 
 void
@@ -1385,6 +1337,11 @@ pocl_ventus_memfill (void *data, pocl_mem_identifier *dst_mem_id,
   assert(host_ptr);
   pocl_fill_aligned_buf_with_pattern (host_ptr, 0, size, pattern, pattern_size);
   int err = vt_copy_to_dev(d->vt_device, *((uint64_t*)(dst_mem_id->mem_ptr)) + offset, host_ptr, size, 0, 0);
+  #ifdef PRINT_CHISEL_TESTCODE
+  uint64_t dev_addr = *((uint64_t*)(dst_mem_id->mem_ptr)) + offset;
+  g_vt_dump_mem.emplace_back(dev_addr, size);
+  g_vt_dump_mem.back().data.assign((uint8_t*)host_ptr, (uint8_t*)host_ptr + size);
+  #endif
   assert(0 == err);
   POCL_MEM_FREE(host_ptr);
 }
