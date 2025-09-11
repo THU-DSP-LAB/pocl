@@ -993,37 +993,26 @@ pocl_ventus_uninit (unsigned j, cl_device_id device)
 cl_int
 pocl_ventus_reinit (unsigned j, cl_device_id device)
 {
-  vt_device_data_t *d = (vt_device_data_t *)device->data;
-  
-  POCL_MSG_PRINT_VENTUS("REINIT: Starting reinit for device %u\n", j);
-  
-  if (d == NULL) {
-    POCL_MSG_PRINT_VENTUS("REINIT: Device data is NULL, calling full init\n");
-    return pocl_ventus_init(j, device, NULL);
+  struct vt_device_data_t *d;
+  int err;
+
+  d = (struct vt_device_data_t *) calloc (1, sizeof (struct vt_device_data_t));
+  if (d == NULL)
+    return CL_OUT_OF_HOST_MEMORY;
+
+  vt_device_h vt_device;
+  err = vt_dev_open(&vt_device);
+  if (err != 0) {
+    free(d);
+    return CL_DEVICE_NOT_FOUND;
   }
 
-  // Re-establish hardware connectivity - key GPU device characteristics
-  if (d->vt_device != NULL) {
-    POCL_MSG_PRINT_VENTUS("REINIT: Closing existing device connection\n");
-    vt_dev_close(d->vt_device);
-    d->vt_device = NULL;
-  }
-  
-  // Reopen the device connection
-  POCL_MSG_PRINT_VENTUS("REINIT: Re-opening device connection\n");
-  if (vt_dev_open(&d->vt_device) != 0) {
-    POCL_MSG_ERR("REINIT: Failed to re-open ventus device\n");
-    return CL_DEVICE_NOT_AVAILABLE;
-  }
-
-  // Reset command queue state (similar to basic devices)
-  POCL_LOCK(d->cq_lock);
-  d->ready_list = NULL;
-  d->command_list = NULL;
+  d->vt_device = vt_device;
   d->current_kernel = NULL;
-  POCL_UNLOCK(d->cq_lock);
 
-  POCL_MSG_PRINT_VENTUS("REINIT: Device %u reinitialized successfully\n", j);
+  POCL_INIT_LOCK (d->cq_lock);
+  device->data = d;
+
   return CL_SUCCESS;
 }
 
