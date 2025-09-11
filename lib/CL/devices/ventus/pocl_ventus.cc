@@ -42,6 +42,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <sys/types.h>
 #include <unistd.h>
 #include <utlist.h>
 #include <sstream>
@@ -298,10 +299,28 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   dev->max_work_item_dimensions = 3;
   // RTL and cyclesim: repo default 8-warp 32-thread
   // TODO: load hardware info from hardware (simulator)
-  dev->max_work_group_size = 8*32;
-  dev->max_work_item_sizes[0] = 8*32;
-  dev->max_work_item_sizes[1] = 8*32;
-  dev->max_work_item_sizes[2] = 8*32;
+  auto get_env_u64 = [] (const char* varname, uint64_t default_val) -> uint64_t {
+      char* numVar = std::getenv(varname);
+      if (numVar) {
+        uint64_t val;
+        try {
+          val = std::stoul(numVar);
+        } catch (...) {
+          POCL_MSG_ERR("environment variable %s is not a valid integer, use default value %lu\n", varname, default_val);
+          return default_val;
+        }
+        return val;
+      } else {
+          POCL_MSG_ERR("environment variable %s is not found, use default value %lu\n", varname, default_val);
+          return default_val;
+      }
+  };
+  uint64_t num_warp = get_env_u64("NUM_WARP", 8);
+  uint64_t num_thread = get_env_u64("NUM_THREAD", 32);
+  dev->max_work_group_size = num_warp*num_thread;
+  dev->max_work_item_sizes[0] = num_warp*num_thread;
+  dev->max_work_item_sizes[1] = num_warp*num_thread;
+  dev->max_work_item_sizes[2] = num_warp*num_thread;
   dev->execution_capabilities = CL_EXEC_KERNEL;
   dev->on_host_queue_props = CL_QUEUE_PROFILING_ENABLE;
   dev->max_parameter_size = 1024;
