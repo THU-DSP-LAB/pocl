@@ -31,3 +31,7 @@ add_pocl_device_library("pocl-devices-ventus" pocl_ventus.h pocl_ventus.cc ventu
 target_link_libraries(pocl-devices-ventus PRIVATE ventus_driver)
 target_link_libraries(pocl-devices-ventus PRIVATE elf)
 target_link_directories(pocl-devices-ventus PRIVATE ${CMAKE_INSTALL_PREFIX}/lib)
+set_target_properties(pocl-devices-ventus PROPERTIES
+    BUILD_RPATH "${VENTUS_INSTALL_PREFIX}/lib"
+    INSTALL_RPATH "$ORIGIN/.."
+)
