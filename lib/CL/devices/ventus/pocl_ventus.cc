@@ -828,6 +828,7 @@ ASSEMBLER_FALLBACK:
     driver_meta.sgprUsage=sgpr_usage;
     driver_meta.vgprUsage=vgpr_usage;
     driver_meta.pdsBaseAddr=pdsbase;
+    driver_meta.kernel_name=meta->name;
 
 // prepare a write function
 

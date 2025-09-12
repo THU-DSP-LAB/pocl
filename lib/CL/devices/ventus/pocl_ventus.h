@@ -58,6 +58,7 @@ typedef struct meta_data{  // 这个metadata是供驱动使用的，而不是给
     uint64_t sgprUsage;///> 每个workgroup使用的标量寄存器数目
     uint64_t vgprUsage;///> 每个thread使用的向量寄存器数目
     uint64_t pdsBaseAddr;///> private memory的基址，要转成每个workgroup的基地址， wf_size*wg_size*pdsSize
+    const char* kernel_name;
 }meta_data;
 
 void pocl_ventus_init_device_ops(struct pocl_device_ops *ops);
