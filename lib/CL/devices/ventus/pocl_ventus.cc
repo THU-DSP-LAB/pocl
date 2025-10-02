@@ -486,9 +486,11 @@ step5 make a writefile for chisel
         {
           if (cmd->device->device_alloca_locals)
             {
-              /* Local buffers are allocated in the device side work-group
+                 /* Local buffers are allocated in the device side work-group
                  launcher. Let's pass only the sizes of the local args in
                  the arg buffer. */
+                // TODO: __local__ arg not supported yet,
+                // but can be used on spike (treated as global memory)
                 void* tmp_arg = malloc(al->size);
                 memset(tmp_arg,0,al->size);
                 if(al->value != nullptr)
@@ -502,7 +504,9 @@ step5 make a writefile for chisel
                     abort();
                 }
                 #ifdef PRINT_CHISEL_TESTCODE
-                  assert(0); // Not support local buffer arg yet.
+                    // assert(0); // Not support local buffer arg yet.
+                    g_vt_dump_mem.emplace_back(new_lds_base, aligned_size);
+                    g_vt_dump_mem.back().data.assign(al->size, 0);
                 #endif
               POCL_MSG_WARN("not support local buffer arg yet.\n");
               //arguments[i] = (void *)al->size;
@@ -1497,6 +1501,7 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
   ss_cmd << " -D__OPENCL_VERSION__=" << device->version_as_int << " ";
 	ss_cmd << program->compiler_options << std::endl;
 	POCL_MSG_PRINT_VENTUS("running \"%s\"\n", ss_cmd.str().c_str());
+  SPDLOG_INFO("running compiler \"{}\"\n", ss_cmd.str());
 
 	FILE *fp = popen(ss_cmd.str().c_str(), "r");
 	if(fp == NULL) {
