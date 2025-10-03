@@ -222,6 +222,23 @@ pocl_ventus_probe(struct pocl_device_ops *ops)
   return 0;
 }
 
+uint64_t get_env_u64(const char* varname, uint64_t default_val) {
+    char* numVar = std::getenv(varname);
+    if (numVar) {
+      uint64_t val;
+      try {
+        val = std::stoul(numVar);
+      } catch (...) {
+        POCL_MSG_ERR("environment variable %s is not a valid integer, use default value %lu\n", varname, default_val);
+        return default_val;
+      }
+      return val;
+    } else {
+        POCL_MSG_ERR("environment variable %s is not found, use default value %lu\n", varname, default_val);
+        return default_val;
+    }
+};
+
 cl_int
 pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
 {
@@ -299,24 +316,15 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   dev->max_work_item_dimensions = 3;
   // RTL and cyclesim: repo default 8-warp 32-thread
   // TODO: load hardware info from hardware (simulator)
-  auto get_env_u64 = [] (const char* varname, uint64_t default_val) -> uint64_t {
-      char* numVar = std::getenv(varname);
-      if (numVar) {
-        uint64_t val;
-        try {
-          val = std::stoul(numVar);
-        } catch (...) {
-          POCL_MSG_ERR("environment variable %s is not a valid integer, use default value %lu\n", varname, default_val);
-          return default_val;
-        }
-        return val;
-      } else {
-          POCL_MSG_ERR("environment variable %s is not found, use default value %lu\n", varname, default_val);
-          return default_val;
-      }
-  };
-  uint64_t num_warp = get_env_u64("NUM_WARP", 8);
-  uint64_t num_thread = get_env_u64("NUM_THREAD", 32);
+  uint64_t backend_num_warp, backend_num_thread;
+  if (vt_dev_caps(nullptr, VT_CAPS_MAX_WARPS, &backend_num_warp) != 0) {
+    backend_num_warp = 8;
+  }
+  if (vt_dev_caps(nullptr, VT_CAPS_MAX_THREADS, &backend_num_thread) != 0) {
+    backend_num_thread = 32;
+  }
+  uint64_t num_warp = get_env_u64("NUM_WARP", backend_num_warp);
+  uint64_t num_thread = get_env_u64("NUM_THREAD", backend_num_thread);
   dev->max_work_group_size = num_warp*num_thread;
   dev->max_work_item_sizes[0] = num_warp*num_thread;
   dev->max_work_item_sizes[1] = num_warp*num_thread;
@@ -426,15 +434,11 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
   }
   uint id = program_ids[uint64_t(kernel->program)];
 
-    uint64_t num_thread=[]{
-	  char* numVar = std::getenv("NUM_THREAD");
-	  if (numVar) {
-	    return std::stoull(numVar);
-	  } else {
-	    POCL_MSG_PRINT_VENTUS("environment variable NUM_THREAD is not found\n");
-	    return 32ull;
-	  }
-	}();
+    uint64_t num_thread;
+    if (vt_dev_caps(nullptr, VT_CAPS_MAX_THREADS, &num_thread) != 0) {
+      num_thread = 32;
+    }
+    num_thread = get_env_u64("NUM_THREAD", num_thread);
     uint64_t num_warp=(pc->local_size[0]*pc->local_size[1]*pc->local_size[2] + num_thread-1)/ num_thread;
     uint64_t num_workgroups[3];
     num_workgroups[0]=pc->num_groups[0];num_workgroups[1]=pc->num_groups[1];num_workgroups[2]=pc->num_groups[2];

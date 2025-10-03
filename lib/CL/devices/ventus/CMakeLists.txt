@@ -24,10 +24,11 @@
 #=============================================================================
 
 if(MSVC)
-  set_source_files_properties( pocl_ventus.h pocl_ventus.cc ventus.h PROPERTIES LANGUAGE CXX )
+  set_source_files_properties( pocl_ventus.h pocl_ventus.cc PROPERTIES LANGUAGE CXX )
 endif(MSVC)
 
-add_pocl_device_library("pocl-devices-ventus" pocl_ventus.h pocl_ventus.cc ventus.h loadelf.cpp)
+add_pocl_device_library("pocl-devices-ventus" pocl_ventus.h pocl_ventus.cc loadelf.cpp)
+target_include_directories(pocl-devices-ventus PRIVATE ${VENTUS_INSTALL_PREFIX}/include)
 target_link_libraries(pocl-devices-ventus PRIVATE ventus_driver)
 target_link_libraries(pocl-devices-ventus PRIVATE elf)
 target_link_directories(pocl-devices-ventus PRIVATE ${CMAKE_INSTALL_PREFIX}/lib)

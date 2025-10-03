@@ -8,7 +8,6 @@
 #define POCL_VENTUS_H
 
 #include "pocl_cl.h"
-#include "ventus.h"
 #include "prototypes.inc"
 
 #ifdef __cplusplus
@@ -21,6 +20,9 @@ extern "C" {
 #define ventus_local_size_total 0
 
 GEN_PROTOTYPES (ventus)
+
+typedef void* vt_device_h; ///< 类型定义，指向vt_device类的指针
+typedef void* vt_buffer_h; ///< 类型定义，指向vt_buffer类的指针
 
 typedef struct vt_device_data_t {
 //#if !defined(ENABLE_LLVM)
