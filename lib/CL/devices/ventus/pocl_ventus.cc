@@ -315,16 +315,17 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
 
   dev->max_work_item_dimensions = 3;
   // RTL and cyclesim: repo default 8-warp 32-thread
-  // TODO: load hardware info from hardware (simulator)
-  uint64_t backend_num_warp, backend_num_thread;
-  if (vt_dev_caps(nullptr, VT_CAPS_MAX_WARPS, &backend_num_warp) != 0) {
-    backend_num_warp = 8;
+  // try to load hardware info from hardware (simulator) first
+  uint64_t num_warp = 8, num_thread = 32;
+  if (vt_dev_caps(nullptr, VT_CAPS_MAX_WARPS, &num_warp) != 0) {
+    num_warp = 8;
   }
-  if (vt_dev_caps(nullptr, VT_CAPS_MAX_THREADS, &backend_num_thread) != 0) {
-    backend_num_thread = 32;
+  if (vt_dev_caps(nullptr, VT_CAPS_MAX_THREADS, &num_thread) != 0) {
+    num_thread = 32;
   }
-  uint64_t num_warp = get_env_u64("NUM_WARP", backend_num_warp);
-  uint64_t num_thread = get_env_u64("NUM_THREAD", backend_num_thread);
+  // if env var is set, override the detected hardware config (mainly for spike)
+  num_warp = get_env_u64("NUM_WARP", num_warp);
+  num_thread = get_env_u64("NUM_THREAD", num_thread);
   dev->max_work_group_size = num_warp*num_thread;
   dev->max_work_item_sizes[0] = num_warp*num_thread;
   dev->max_work_item_sizes[1] = num_warp*num_thread;
@@ -434,7 +435,7 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
   }
   uint id = program_ids[uint64_t(kernel->program)];
 
-    uint64_t num_thread;
+    uint64_t num_thread = 32;
     if (vt_dev_caps(nullptr, VT_CAPS_MAX_THREADS, &num_thread) != 0) {
       num_thread = 32;
     }
