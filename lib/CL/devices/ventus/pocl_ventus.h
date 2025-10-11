@@ -8,7 +8,6 @@
 #define POCL_VENTUS_H
 
 #include "pocl_cl.h"
-#include "ventus.h"
 #include "prototypes.inc"
 
 #ifdef __cplusplus
@@ -21,6 +20,9 @@ extern "C" {
 #define ventus_local_size_total 0
 
 GEN_PROTOTYPES (ventus)
+
+typedef void* vt_device_h; ///< 类型定义，指向vt_device类的指针
+typedef void* vt_buffer_h; ///< 类型定义，指向vt_buffer类的指针
 
 typedef struct vt_device_data_t {
 //#if !defined(ENABLE_LLVM)
@@ -58,6 +60,7 @@ typedef struct meta_data{  // 这个metadata是供驱动使用的，而不是给
     uint64_t sgprUsage;///> 每个workgroup使用的标量寄存器数目
     uint64_t vgprUsage;///> 每个thread使用的向量寄存器数目
     uint64_t pdsBaseAddr;///> private memory的基址，要转成每个workgroup的基地址， wf_size*wg_size*pdsSize
+    const char* kernel_name;
 }meta_data;
 
 void pocl_ventus_init_device_ops(struct pocl_device_ops *ops);
@@ -66,6 +69,7 @@ unsigned int pocl_ventus_probe(struct pocl_device_ops *ops);
 cl_int pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters);
 void pocl_ventus_run (void *data, _cl_command_node *cmd);
 cl_int pocl_ventus_uninit (unsigned j, cl_device_id device);
+cl_int pocl_ventus_reinit (unsigned j, cl_device_id device);
 void ventus_command_scheduler (struct vt_device_data_t *d);
 void pocl_ventus_submit (_cl_command_node *node, cl_command_queue cq);
 void pocl_ventus_flush (cl_device_id device, cl_command_queue cq);
