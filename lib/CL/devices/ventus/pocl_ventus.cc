@@ -33,6 +33,7 @@
 #include "utlist.h"
 #include "loadelf.hpp"
 
+#include <any>
 #include <assert.h>
 #include <cstdint>
 #include <ctype.h>
@@ -475,12 +476,11 @@ step5 make a writefile for chisel
   assert(cmd->device->data != NULL);
   d = (struct vt_device_data_t *)cmd->device->data;
 
-  void **arguments = (void **)malloc (sizeof (void *)
-                                      * (meta->num_args + meta->num_locals));
 
-
-//TODO 1: support local buffer as argument. Notice in current structure, allocated localmembuffer will be mapped to ddr space.
-//TODO 2: print buffer support in pocl
+  // preprocess some kernel arguments
+  std::vector<std::any> args(meta->num_args + meta->num_locals);
+  //TODO 1: support local buffer as argument. Notice in current structure, allocated localmembuffer will be mapped to ddr space.
+  //TODO 2: print buffer support in pocl
   /* Process the kernel arguments. Convert the opaque buffer
      pointers to real device pointers, allocate dynamic local
      memory buffers, etc. */
@@ -514,12 +514,12 @@ step5 make a writefile for chisel
                     g_vt_dump_mem.back().data.assign(al->size, 0);
                 #endif
               POCL_MSG_WARN("not support local buffer arg yet.\n");
-              //arguments[i] = (void *)al->size;
+              args[i] = uint64_t(new_lds_base); // device-side ptr
             }
           else
             {
-              arguments[i] = malloc (sizeof (void *));
-              //*(void **)(arguments[i]) =pocl_aligned_malloc(MAX_EXTENDED_ALIGNMENT, al->size);
+              // what does this do?
+              assert(0);
             }
         }
       else if (meta->arg_info[i].type == POCL_ARG_TYPE_POINTER)
@@ -528,49 +528,32 @@ step5 make a writefile for chisel
              that case we must pass the same NULL forward to the kernel.
              Otherwise, the user must have created a buffer with per device
              pointers stored in the cl_mem. */
-          arguments[i] = malloc (sizeof (void *));
-          if (al->value == NULL)
-            {
-              *(void **)arguments[i] = NULL;
-            }
-          else
-            {
-              void *ptr = NULL;
-              if (al->is_svm)
-                {
-                  ptr = *(void **)al->value;
-                }
-              else
-                {
+          if (al->value == NULL) {
+              args[i] = uint64_t(0); // device-side nullptr
+          } else {
+              if (al->is_svm) {
+                  args[i] = al->value; // host-side SVM pointer
+              } else { // device-side pointer
                   cl_mem m = (*(cl_mem *)(al->value));
-                  ptr = malloc(sizeof(uint64_t));
-                  memcpy(ptr,m->device_ptrs[cmd->device->global_mem_id].mem_ptr,sizeof(uint64_t));
-                  *(uint64_t*)ptr += al->offset;
-                }
-                ((void **)arguments)[i] = ptr;
-            }
+                  args[i] = reinterpret_cast<uint64_t>(m->device_ptrs[cmd->device->global_mem_id].mem_ptr) + al->offset;
+              }
+          }
         }
       else if (meta->arg_info[i].type == POCL_ARG_TYPE_IMAGE)
         {
           dev_image_t di;
           pocl_fill_dev_image_t (&di, al, cmd->device);
-
-          void *devptr = pocl_aligned_malloc (MAX_EXTENDED_ALIGNMENT,
-                                              sizeof (dev_image_t));
-          arguments[i] = malloc (sizeof (void *));
-          *(void **)(arguments[i]) = devptr;
-          memcpy (devptr, &di, sizeof (dev_image_t));
+          args[i] = di;
         }
       else if (meta->arg_info[i].type == POCL_ARG_TYPE_SAMPLER)
         {
           dev_sampler_t ds;
           pocl_fill_dev_sampler_t (&ds, al);
-          arguments[i] = malloc (sizeof (void *));
-          *(void **)(arguments[i]) = (void *)ds;
+          args[i] = ds;
         }
       else
         {
-          arguments[i] = al->value;
+          // other type: do noting, just use al->value later
         }
     }
 
@@ -592,9 +575,10 @@ step5 make a writefile for chisel
         {
           size_t s = meta->local_sizes[i];
           size_t j = meta->num_args + i;
-          arguments[j] = malloc (sizeof (void *));
-          void *pp = pocl_aligned_malloc (MAX_EXTENDED_ALIGNMENT, s);
-          *(void **)(arguments[j]) = pp;
+          // TODO: check this. should alloc on device-side?
+          // arguments[j] = malloc (sizeof (void *));
+          // void *pp = pocl_aligned_malloc (MAX_EXTENDED_ALIGNMENT, s);
+          // *(void **)(arguments[j]) = pp;
         }
     }
 
@@ -612,43 +596,57 @@ step5 make a writefile for chisel
    * buffer saves in device memory, to get the content of kernel argument,
    * check the variable `abuf_args_data`.
    **********************************************************************************************************/
+  constexpr uint8_t device_ptr_size = 4;
   uint64_t abuf_size = 0;
   for (i = 0; i < meta->num_args; ++i) {
       pocl_argument* al = &(cmd->command.run.arguments[i]);
-      if (ARG_IS_LOCAL(meta->arg_info[i])&& cmd->device->device_alloca_locals) {
-        abuf_size += 4;
-      } else
-      if ((meta->arg_info[i].type == POCL_ARG_TYPE_POINTER)
-       || (meta->arg_info[i].type == POCL_ARG_TYPE_IMAGE)
+      if (ARG_IS_LOCAL(meta->arg_info[i]) && cmd->device->device_alloca_locals) {
+        abuf_size += device_ptr_size;
+      } else if (meta->arg_info[i].type == POCL_ARG_TYPE_POINTER) {
+        abuf_size += al->is_svm ? sizeof(void*) : device_ptr_size;
+      } else if((meta->arg_info[i].type == POCL_ARG_TYPE_IMAGE)
        || (meta->arg_info[i].type == POCL_ARG_TYPE_SAMPLER)) {
-        abuf_size += 4;
+        abuf_size += device_ptr_size; // TODO
       } else {
         abuf_size = pocl_align_value(abuf_size+al->size, pocl_size_ceil2_64(std::max(al->size, (uint64_t)4)));
       }
-    }
+  }
 
   assert(abuf_size <= 0xffff);
   char* abuf_args_data = (char*)malloc(abuf_size);
   uint64_t abuf_args_p = 0;
   for(i = 0; i < meta->num_args; ++i) {
       pocl_argument* al = &(cmd->command.run.arguments[i]);
-      if (ARG_IS_LOCAL(meta->arg_info[i])&& cmd->device->device_alloca_locals) {
-        memcpy(abuf_args_data+abuf_args_p,&local_arg[i],4);
-        abuf_args_p+=4;
-      } else
-      if ((meta->arg_info[i].type == POCL_ARG_TYPE_POINTER)
-       || (meta->arg_info[i].type == POCL_ARG_TYPE_IMAGE)
-       || (meta->arg_info[i].type == POCL_ARG_TYPE_SAMPLER)) {
-        size_t alloc_p = pocl_align_value(abuf_args_p, 4);
-        memcpy(abuf_args_data+alloc_p,arguments[i],4);
-        abuf_args_p=alloc_p + 4;
+      if (ARG_IS_LOCAL(meta->arg_info[i]) && cmd->device->device_alloca_locals) {
+        auto devptr = std::any_cast<uint64_t>(args[i]);
+        abuf_args_p = pocl_align_value(abuf_args_p, device_ptr_size);
+        memcpy(abuf_args_data + abuf_args_p, &devptr, device_ptr_size);
+        abuf_args_p += device_ptr_size;
+      } else if (meta->arg_info[i].type == POCL_ARG_TYPE_POINTER){
+        uint64_t devptr;
+        uintptr_t svmptr;
+        if (al->is_svm) {
+            svmptr = (uintptr_t) std::any_cast<void*>(args[i]);
+            assert(0); // not support SVM now
+        } else {
+            devptr = std::any_cast<uint64_t>(args[i]);
+        }
+        abuf_args_p = pocl_align_value(abuf_args_p, device_ptr_size);
+        memcpy(abuf_args_data + abuf_args_p, &devptr, device_ptr_size);
+        abuf_args_p += device_ptr_size;
+      } else if((meta->arg_info[i].type == POCL_ARG_TYPE_IMAGE) || (meta->arg_info[i].type == POCL_ARG_TYPE_SAMPLER)) {
+        assert(0); // not support
+        // maybe: vt_buf_alloc + vt_copy_to_dev image/sampler struct and pass device ptr as args
+        abuf_args_p = pocl_align_value(abuf_args_p, device_ptr_size);
+        // memcpy(abuf_args_data+alloc_p,arguments[i],device_ptr_size);
+        abuf_args_p += device_ptr_size;
       } else {
-        size_t alloc_p = pocl_align_value(abuf_args_p, pocl_size_ceil2_64(std::max(al->size, (uint64_t)4)));
-        memcpy(abuf_args_data+alloc_p,al->value,al->size);
-        abuf_args_p = alloc_p + al->size;
+        abuf_args_p = pocl_align_value(abuf_args_p, pocl_size_ceil2_64(std::max(al->size, (uint64_t)4)));
+        memcpy(abuf_args_data+abuf_args_p,al->value,al->size);
+        abuf_args_p += al->size;
       }
-    }
-    POCL_MSG_PRINT_VENTUS("Allocating kernel arg buffer entry:\n");
+  }
+  POCL_MSG_PRINT_VENTUS("Allocating kernel arg buffer entry:\n");
   uint64_t arg_dev_mem_addr;
   if (abuf_size == 0) {
     arg_dev_mem_addr = 0;
@@ -909,45 +907,8 @@ ASSEMBLER_FALLBACK:
       err |= vt_one_buf_free(d->vt_device, abuf_size, &arg_dev_mem_addr, 0, 0);
     }
     assert(0 == err);
-    for (i = 0; i < meta->num_args; ++i)
-    {
-      if (ARG_IS_LOCAL (meta->arg_info[i]))
-        {
-          if (!cmd->device->device_alloca_locals)
-            {
-              POCL_MEM_FREE(*(void **)(arguments[i]));
-              POCL_MEM_FREE(arguments[i]);
-            }
-          else
-            {
-              /* Device side local space allocation has deallocation via stack
-                 unwind. */
-            }
-        }
-      else if (meta->arg_info[i].type == POCL_ARG_TYPE_IMAGE
-               || meta->arg_info[i].type == POCL_ARG_TYPE_SAMPLER)
-        {
-          if (meta->arg_info[i].type != POCL_ARG_TYPE_SAMPLER)
-            POCL_MEM_FREE (*(void **)(arguments[i]));
-          POCL_MEM_FREE(arguments[i]);
-        }
-      else if (meta->arg_info[i].type == POCL_ARG_TYPE_POINTER)
-        {
-          POCL_MEM_FREE(arguments[i]);
-        }
-    }
-
-  if (!cmd->device->device_alloca_locals)
-    for (i = 0; i < meta->num_locals; ++i)
-      {
-        POCL_MEM_FREE (*(void **)(arguments[meta->num_args + i]));
-        POCL_MEM_FREE (arguments[meta->num_args + i]);
-      }
-  free(arguments);
   free(abuf_args_data);
   free(kernel_metadata);
-
-
 
   //pocl_release_dlhandle_cache(cmd);
 
@@ -1096,7 +1057,7 @@ pocl_ventus_compile_kernel (_cl_command_node *cmd, cl_kernel kernel,
 void pocl_ventus_free(cl_device_id device, cl_mem memobj) {
   cl_mem_flags flags = memobj->flags;
   vt_device_data_t* d = (vt_device_data_t *)device->data;
-  uint64_t dev_mem_addr = *((uint64_t*)(memobj->device_ptrs[device->dev_id].mem_ptr));
+  uint64_t dev_mem_addr = reinterpret_cast<uint64_t>(memobj->device_ptrs[device->dev_id].mem_ptr);
 
   /* The host program can provide the runtime with a pointer
   to a block of continuous memory to hold the memory object
@@ -1113,6 +1074,7 @@ void pocl_ventus_free(cl_device_id device, cl_mem memobj) {
   }
   if (memobj->flags | CL_MEM_ALLOC_HOST_PTR)
     memobj->mem_host_ptr = NULL;
+  memobj->device_ptrs[device->dev_id].mem_ptr = nullptr;
 }
 
 
@@ -1120,28 +1082,26 @@ cl_int
 pocl_ventus_alloc_mem_obj(cl_device_id device, cl_mem mem_obj, void *host_ptr) {
 
   cl_mem_flags flags = mem_obj->flags;
-  unsigned i;
   vt_device_data_t* d = (vt_device_data_t *)device->data;
   pocl_global_mem_t *mem = device->global_memory;
   int err;
   uint64_t dev_mem_addr;
   // if this memory object has not been allocated device memory space,
   // then allocating a device memory and binding the memory pointer to cl_mem object
-  if(!mem_obj->device_ptrs[device->dev_id].mem_ptr) {
-      err = vt_buf_alloc(d->vt_device, mem_obj->size, &dev_mem_addr,0,0,0);
-      if (err != 0) {
-          return CL_MEM_OBJECT_ALLOCATION_FAILURE;
-      }
-      free(mem_obj->device_ptrs[device->dev_id].mem_ptr);
-      mem_obj->device_ptrs[device->dev_id].mem_ptr= malloc(sizeof(uint64_t));
-      memcpy((mem_obj->device_ptrs[device->dev_id].mem_ptr),&dev_mem_addr,sizeof(uint64_t));
+  assert(sizeof(mem_obj->device_ptrs[device->dev_id].mem_ptr) >= sizeof(uint64_t));
+  err = vt_buf_alloc(d->vt_device, mem_obj->size, &dev_mem_addr,0,0,0);
+  if (err != 0 || dev_mem_addr == 0) {
+      return CL_MEM_OBJECT_ALLOCATION_FAILURE;
   }
+  mem_obj->device_ptrs[device->dev_id].mem_ptr = reinterpret_cast<void*>(dev_mem_addr);
 
   // if the memory object has been allocated device memory pointer and
   // if the flags indicates that copy data from host ptr, then do the following operations.
   if ((flags & CL_MEM_COPY_HOST_PTR) && mem_obj->device_ptrs[device->dev_id].mem_ptr) {
     if (mem_obj->mem_host_ptr) {
-      err = vt_copy_to_dev(d->vt_device,*(uint64_t*)(mem_obj->device_ptrs[device->dev_id].mem_ptr),mem_obj->mem_host_ptr, mem_obj->size, 0,0);
+      err = vt_copy_to_dev(d->vt_device,
+                           reinterpret_cast<uint64_t>(mem_obj->device_ptrs[device->dev_id].mem_ptr),
+                           mem_obj->mem_host_ptr, mem_obj->size, 0, 0);
       if (err != 0) {
         return CL_MEM_OBJECT_ALLOCATION_FAILURE;
       }
@@ -1164,7 +1124,9 @@ void pocl_ventus_read(void *data,
                       size_t offset,
                       size_t size) {
   struct vt_device_data_t *d = (struct vt_device_data_t *)data;
-  int err = vt_copy_from_dev(d->vt_device,*((uint64_t*)(src_mem_id->mem_ptr))+offset,host_ptr,size,0,0);
+  int err = vt_copy_from_dev(
+      d->vt_device, (reinterpret_cast<uint64_t>(src_mem_id->mem_ptr)) + offset,
+      host_ptr, size, 0, 0);
   assert(0 == err);
 }
 
@@ -1175,13 +1137,15 @@ void pocl_ventus_write(void *data,
                        size_t offset,
                        size_t size) {
   struct vt_device_data_t *d = (struct vt_device_data_t *)data;
-  int err = vt_copy_to_dev(d->vt_device,*((uint64_t*)(dst_mem_id->mem_ptr))+offset,host_ptr,size,0,0);
+  int err = vt_copy_to_dev(
+      d->vt_device, (reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr)) + offset,
+      host_ptr, size, 0, 0);
   assert(0 == err);
-  #ifdef PRINT_CHISEL_TESTCODE
-  uint64_t dev_addr = *((uint64_t*)(dst_mem_id->mem_ptr)) + offset;
+#ifdef PRINT_CHISEL_TESTCODE
+  uint64_t dev_addr = reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr) + offset;
   g_vt_dump_mem.emplace_back(dev_addr, size);
   g_vt_dump_mem.back().data.assign((uint8_t*)host_ptr, (uint8_t*)host_ptr + size);
-  #endif // PRINT_CHISEL_TESTCODE
+#endif // PRINT_CHISEL_TESTCODE
 }
 
 void
