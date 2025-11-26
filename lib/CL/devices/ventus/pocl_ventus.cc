@@ -1125,7 +1125,7 @@ void pocl_ventus_read(void *data,
                       size_t size) {
   struct vt_device_data_t *d = (struct vt_device_data_t *)data;
   int err = vt_copy_from_dev(
-      d->vt_device, (reinterpret_cast<uint64_t>(src_mem_id->mem_ptr)) + offset,
+      d->vt_device, reinterpret_cast<uint64_t>(src_mem_id->mem_ptr) + offset,
       host_ptr, size, 0, 0);
   assert(0 == err);
 }
@@ -1138,7 +1138,7 @@ void pocl_ventus_write(void *data,
                        size_t size) {
   struct vt_device_data_t *d = (struct vt_device_data_t *)data;
   int err = vt_copy_to_dev(
-      d->vt_device, (reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr)) + offset,
+      d->vt_device, reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr) + offset,
       host_ptr, size, 0, 0);
   assert(0 == err);
 #ifdef PRINT_CHISEL_TESTCODE
@@ -1157,12 +1157,9 @@ pocl_ventus_driver_copy (void *data, pocl_mem_identifier *dst_mem_id, cl_mem dst
     char *__restrict__ src_ptr = (char *)src_mem_id->mem_ptr;
     char *__restrict__ dst_ptr = (char *)dst_mem_id->mem_ptr;
 
-    if ((src_ptr + src_offset) == (dst_ptr + dst_offset))
-        return;
-
     void *host_ptr = malloc(size);
-    uint64_t dev_src_addr  = (uint64_t)(*(uint64_t *)src_ptr);
-    uint64_t dev_dst_addr  = (uint64_t)(*(uint64_t *)dst_ptr);
+    uint64_t dev_src_addr = reinterpret_cast<uint64_t>(src_mem_id->mem_ptr);
+    uint64_t dev_dst_addr = reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr);
 
     int err = vt_copy_from_dev(d->vt_device, dev_src_addr + src_offset, host_ptr, size, 0, 0);
     assert(0 == err);
@@ -1185,8 +1182,7 @@ pocl_ventus_read_rect (void *data, void *__restrict__ const host_ptr,
                        size_t const host_slice_pitch)
 {
     vt_device_data_t *d = (vt_device_data_t *)data;
-    void *__restrict__ device_ptr = src_mem_id->mem_ptr;
-    uint64_t src_addr = (uint64_t)(*(uint64_t *)device_ptr);
+    uint64_t src_addr = reinterpret_cast<uint64_t>(src_mem_id->mem_ptr);
 
     char *buff = (char *)malloc(src_buf->size);
     int err = vt_copy_from_dev(d->vt_device, src_addr, buff, src_buf->size, 0, 0);
@@ -1228,8 +1224,7 @@ pocl_ventus_write_rect (void *data, const void *__restrict__ const host_ptr,
                         size_t const host_slice_pitch)
 {
     vt_device_data_t *d = (vt_device_data_t *)data;
-    void *__restrict__ device_ptr = dst_mem_id->mem_ptr;
-    uint64_t dev_addr = (uint64_t)(*(uint64_t *)device_ptr);
+    uint64_t dev_addr = reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr);
 
     char *buff = (char *)malloc(dst_buf->size);
     int err = vt_copy_from_dev(d->vt_device, dev_addr, buff, dst_buf->size, 0, 0);
@@ -1278,10 +1273,8 @@ pocl_ventus_copy_rect (void *data, pocl_mem_identifier *dst_mem_id,
 {
     int err;
     vt_device_data_t *d = (vt_device_data_t *)data;
-    void *__restrict__ src_ptr = src_mem_id->mem_ptr;
-    void *__restrict__ dst_ptr = dst_mem_id->mem_ptr;
-    uint64_t dev_src_addr  = (uint64_t)(*(uint64_t *)src_ptr);
-    uint64_t dev_dst_addr  = (uint64_t)(*(uint64_t *)dst_ptr);
+    uint64_t dev_src_addr  = reinterpret_cast<uint64_t>(src_mem_id->mem_ptr);
+    uint64_t dev_dst_addr  = reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr);
     char *src_buff = (char *)malloc(src_buf->size);
     char *dst_buff = (char *)malloc(dst_buf->size);
 
@@ -1328,10 +1321,10 @@ pocl_ventus_memfill (void *data, pocl_mem_identifier *dst_mem_id,
   struct vt_device_data_t *d = (struct vt_device_data_t *)data;
   void *host_ptr = pocl_aligned_malloc(MAX_EXTENDED_ALIGNMENT, size);
   assert(host_ptr);
+  uint64_t dev_addr = reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr) + offset;
   pocl_fill_aligned_buf_with_pattern (host_ptr, 0, size, pattern, pattern_size);
-  int err = vt_copy_to_dev(d->vt_device, *((uint64_t*)(dst_mem_id->mem_ptr)) + offset, host_ptr, size, 0, 0);
+  int err = vt_copy_to_dev(d->vt_device, dev_addr, host_ptr, size, 0, 0);
   #ifdef PRINT_CHISEL_TESTCODE
-  uint64_t dev_addr = *((uint64_t*)(dst_mem_id->mem_ptr)) + offset;
   g_vt_dump_mem.emplace_back(dev_addr, size);
   g_vt_dump_mem.back().data.assign((uint8_t*)host_ptr, (uint8_t*)host_ptr + size);
   #endif
@@ -1344,8 +1337,7 @@ pocl_ventus_map_mem (void *data, pocl_mem_identifier *src_mem_id,
                                  cl_mem src_buf, mem_mapping_t *map)
 {
     struct vt_device_data_t *d = (struct vt_device_data_t *)data;
-    char *__restrict__ src_device_ptr = (char *)src_mem_id->mem_ptr;
-    uint64_t dev_addr = (*((uint64_t *)(src_mem_id->mem_ptr))) + map->offset;
+    uint64_t dev_addr = reinterpret_cast<uint64_t>(src_mem_id->mem_ptr) + map->offset;
 
     assert (map->host_ptr);
 
@@ -1353,11 +1345,9 @@ pocl_ventus_map_mem (void *data, pocl_mem_identifier *src_mem_id,
         return CL_SUCCESS;
     }
 
-    if (map->host_ptr != (src_device_ptr + map->offset)) {
-        int err = vt_copy_from_dev(d->vt_device, dev_addr, map->host_ptr, map->size, 0, 0);
-        if (err) {
-            return CL_MAP_FAILURE;
-        }
+    int err = vt_copy_from_dev(d->vt_device, dev_addr, map->host_ptr, map->size, 0, 0);
+    if (err) {
+        return CL_MAP_FAILURE;
     }
 
     return CL_SUCCESS;
@@ -1368,19 +1358,13 @@ pocl_ventus_unmap_mem (void *data, pocl_mem_identifier *dst_mem_id,
                        cl_mem dst_buf, mem_mapping_t *map)
 {
     struct vt_device_data_t *d = (struct vt_device_data_t *)data;
-    uint64_t dev_addr = (*((uint64_t *)(dst_mem_id->mem_ptr))) + map->offset;
-    char *__restrict__ dst_device_ptr = (char *)dst_mem_id->mem_ptr;
+    uint64_t dev_addr = reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr) + map->offset;
     assert (map->host_ptr);
 
-    if (map->host_ptr == (dst_device_ptr + map->offset))
-        NULL;
-    else
-    {
-        if (map->map_flags != CL_MAP_READ) {
-            int err = vt_copy_to_dev(d->vt_device, dev_addr, map->host_ptr, map->size, 0, 0);
-            if (err) {
-                return CL_MAP_FAILURE;
-            }
+    if (map->map_flags != CL_MAP_READ) {
+        int err = vt_copy_to_dev(d->vt_device, dev_addr, map->host_ptr, map->size, 0, 0);
+        if (err) {
+            return CL_MAP_FAILURE;
         }
     }
 
