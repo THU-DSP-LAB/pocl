@@ -822,7 +822,7 @@ ASSEMBLER_FALLBACK:
 
   pdsbase=pds_dev_mem_addr;
   knlbase=knl_dev_mem_addr;
-  struct meta_data driver_meta;
+  vt_kernel_metadata_t driver_meta;
     driver_meta.kernel_id=0;
     driver_meta.kernel_size[0]=num_workgroups[0];
     driver_meta.kernel_size[1]=num_workgroups[1];
@@ -835,6 +835,11 @@ ASSEMBLER_FALLBACK:
     driver_meta.sgprUsage=sgpr_usage;
     driver_meta.vgprUsage=vgpr_usage;
     driver_meta.pdsBaseAddr=pdsbase;
+    for (i = 0; i < 3; ++i) {
+      driver_meta.num_thread_global[i] = global_size_32[i];
+      driver_meta.num_thread_local[i] = local_size_32[i];
+      driver_meta.threadIdxOffset[i] = global_offset_32[i];
+    }
     driver_meta.kernel_name=meta->name;
 
 // prepare a write function
