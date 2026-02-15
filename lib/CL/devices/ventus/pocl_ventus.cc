@@ -1099,6 +1099,11 @@ pocl_ventus_alloc_mem_obj(cl_device_id device, cl_mem mem_obj, void *host_ptr) {
       return CL_MEM_OBJECT_ALLOCATION_FAILURE;
   }
   mem_obj->device_ptrs[device->dev_id].mem_ptr = reinterpret_cast<void*>(dev_mem_addr);
+  assert(!std::any_of(g_vt_dump_mem.begin(), g_vt_dump_mem.end(),
+             [dev_mem_addr](const MemBlock &mb) {
+               return mb.vaddr == dev_mem_addr;
+             }));
+  g_vt_dump_mem.emplace_back(dev_mem_addr, mem_obj->size);
 
   // if the memory object has been allocated device memory pointer and
   // if the flags indicates that copy data from host ptr, then do the following operations.
@@ -1110,7 +1115,6 @@ pocl_ventus_alloc_mem_obj(cl_device_id device, cl_mem mem_obj, void *host_ptr) {
       if (err != 0) {
         return CL_MEM_OBJECT_ALLOCATION_FAILURE;
       }
-      g_vt_dump_mem.emplace_back(dev_mem_addr, mem_obj->size);
       g_vt_dump_mem.back().data.assign((uint8_t*)mem_obj->mem_host_ptr, (uint8_t*)mem_obj->mem_host_ptr + mem_obj->size);
     }
   }
@@ -1148,8 +1152,16 @@ void pocl_ventus_write(void *data,
   assert(0 == err);
 #ifdef PRINT_CHISEL_TESTCODE
   uint64_t dev_addr = reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr) + offset;
-  g_vt_dump_mem.emplace_back(dev_addr, size);
-  g_vt_dump_mem.back().data.assign((uint8_t*)host_ptr, (uint8_t*)host_ptr + size);
+  auto memblk = std::find_if(g_vt_dump_mem.begin(), g_vt_dump_mem.end(),
+                     [dev_addr, size](const MemBlock &mb) {
+                       return mb.vaddr == dev_addr && mb.memsz >= size;
+                     });
+  if (memblk != g_vt_dump_mem.end()) {
+    memblk->data.assign((uint8_t*)host_ptr, (uint8_t*)host_ptr + size);
+  } else {
+    g_vt_dump_mem.emplace_back(dev_addr, size);
+    g_vt_dump_mem.back().data.assign((uint8_t*)host_ptr, (uint8_t*)host_ptr + size);
+  }
 #endif // PRINT_CHISEL_TESTCODE
 }
 
