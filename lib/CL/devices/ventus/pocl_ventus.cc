@@ -682,36 +682,36 @@ step5 make a writefile for chisel
     }*/
 
   /**********************************************************************************************************
-   * 这个是kernel函数的入口地址，可以在终端执行nm -s object.riscv看到kernel函数的入口
+   * Resolve kernel function entry address from the ELF file.
    * clCreateKernel.c line 79
    ***********************************************************************************************************/
 	uint32_t kernel_entry;
   char filename[256] = "object";
   strcat(filename, std::to_string(id).c_str());
-  #ifdef __linux__
-    std::string kernel_name(meta->name);
-    std::string kernel_entry_cmd = std::string(R"(nm -s )") + filename + std::string(R"(.riscv | grep -w 'T' | grep -w )") +kernel_name+ std::string(R"( | grep -o '^[^ ]*')");
-    FILE *fp0 = popen(kernel_entry_cmd.c_str(), "r");
-    if(fp0 == NULL) {
-        POCL_MSG_ERR("running compile kernel failed");
-        return;
+  char binary_filename[256];
+  strcpy(binary_filename, filename);
+  strcat(binary_filename, ".riscv");
+#ifdef __linux__
+  {
+    auto sym = get_symbol_value_from_elf(binary_filename, meta->name, nullptr);
+    if (!sym.has_value()) {
+      POCL_MSG_ERR("ELF: cannot find kernel symbol '%s' from '%s'\n", meta->name,
+                   binary_filename);
+      abort();
     }
-    char temp2[1024];
-    while (fgets(temp2, 1024, fp0) != NULL)
-    {
-        kernel_entry = static_cast<uint32_t>(std::strtoul(temp2, nullptr, 16));
+    if (*sym > UINT32_MAX) {
+      POCL_MSG_ERR("ELF: kernel symbol '%s' address 0x%lx out of 32-bit range\n",
+                   meta->name, (unsigned long)*sym);
+      abort();
     }
-    int status2=pclose(fp0);
-    if (status2 == -1) {
-        perror("pclose() failed");
-        exit(EXIT_FAILURE);
-    } else {
-        POCL_MSG_PRINT_VENTUS("Kernel entry of \"%s\" is : \"0x%x\"\n", kernel->name, kernel_entry);
-    }
-  #elif
-    POCL_MSG_ERR("This operate system is not supported now by ventus, please use linux! \n");
-    exit(1);
-  #endif
+    kernel_entry = (uint32_t)(*sym);
+    POCL_MSG_PRINT_VENTUS("Kernel entry of \"%s\" is : \"0x%x\"\n", kernel->name,
+                          kernel_entry);
+  }
+#else
+  POCL_MSG_ERR("This operating system is not supported now by ventus, please use linux!\n");
+  abort();
+#endif
   /***********************************************************************************************************/
 
 
@@ -719,42 +719,9 @@ step5 make a writefile for chisel
   uint64_t pc_src_size=0x10000000;
   uint64_t pc_dev_mem_addr = 0x80000000;
 
-  /***********************************************************************************************************
-   * parsing object file to obtain vmem file using assembler
-   ***********************************************************************************************************/
-  #ifdef __linux__
-	  std::string assembler_path = CLANG;
-    if(pocl_exists(assembler_path.c_str())) {
-      assembler_path = assembler_path.substr(0,assembler_path.length()-6);
-	    assembler_path += "/../../assemble.sh";
-      if(!pocl_exists(assembler_path.c_str())) {
-        goto ASSEMBLER_FALLBACK;
-      }
-    }
-    else {
-ASSEMBLER_FALLBACK:
-      std::string ventus_assembler(VENTUS_INSTALL_PREFIX_DIR);
-      ventus_assembler += "/lib/scripts/assemble.sh";
-      assembler_path = ventus_assembler;
-      assert(pocl_exists(ventus_assembler.c_str()));
-    }
-  	system((std::string("chmod +x ") + assembler_path).c_str());
-        assembler_path = assembler_path + std::string(" ") + std::string(filename);
-  	system(assembler_path.c_str());
-	  POCL_MSG_PRINT_VENTUS("Vmem file has been written to %s.vmem\n", filename);
-  #elif
-    POCL_MSG_ERR("This operate system is not supported now by ventus, please use linux! \n");
-    exit(1);
-  #endif
-
-	//pass in vmem file
-	char binary_filename[256];
-        strcpy(binary_filename, filename);
-        strcat(binary_filename, ".riscv");
-	///将text段搬到ddr(not related to spike),并且起始地址必须是0x80000000(spike专用)，verilator需要先解析出vmem,然后上传程序段
-	vt_upload_kernel_file(d->vt_device,binary_filename,0);
+  // Upload the kernel ELF to Ventus driver
+  vt_upload_kernel_file(d->vt_device, binary_filename, 0);
   #ifdef PRINT_CHISEL_TESTCODE
-  // this elf file includes all kernels of executable file, kernel actually to be executed is determined by metadata.
 	fp_write_file(fp_metadata, &(pc_dev_mem_addr), sizeof(uint64_t));
   std::vector<MemBlock> elf_data = get_data_from_elf(binary_filename, nullptr);
   g_vt_dump_mem.insert(g_vt_dump_mem.end(), elf_data.begin(), elf_data.end());

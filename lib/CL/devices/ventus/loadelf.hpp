@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <spdlog/spdlog.h>
 #include <vector>
 
@@ -19,3 +20,8 @@ typedef struct MemBlock {
 } MemBlock;
 
 std::vector<MemBlock> get_data_from_elf(const char *filename, std::shared_ptr<spdlog::logger> logger);
+
+// Look up a symbol value (address) from an ELF file. Returns std::nullopt if not found.
+std::optional<uint64_t> get_symbol_value_from_elf(const char *filename,
+                                                  const char *symbol_name,
+                                                  std::shared_ptr<spdlog::logger> logger);
