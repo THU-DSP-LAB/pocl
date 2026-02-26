@@ -330,7 +330,7 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   dev->max_work_group_size = num_warp*num_thread;
   dev->max_work_item_sizes[0] = num_warp*num_thread;
   dev->max_work_item_sizes[1] = num_warp*num_thread;
-  dev->max_work_item_sizes[2] = num_warp*num_thread;
+  dev->max_work_item_sizes[2] = 64; // 对齐 NV CUDA 限制
   dev->execution_capabilities = CL_EXEC_KERNEL;
   dev->on_host_queue_props = CL_QUEUE_PROFILING_ENABLE;
   dev->max_parameter_size = 1024;
