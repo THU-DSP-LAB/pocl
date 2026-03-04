@@ -69,6 +69,10 @@
 #include "pocl_ventus.h"
 //#endif
 
+#ifndef VT_CAPS_MAX_WG_SLOTS
+#error "VT_CAPS_MAX_WG_SLOTS is missing from ventus.h; driver header/ABI is out of sync."
+#endif
+
 #define VENTUS_INSTALL_PREFIX_DIR getenv("VENTUS_INSTALL_PREFIX")
 
   /* ENABLE_LLVM means to compile the kernel using pocl compiler,
@@ -239,6 +243,10 @@ uint64_t get_env_u64(const char* varname, uint64_t default_val) {
         return default_val;
     }
 };
+
+static bool mul_u64_overflow(uint64_t a, uint64_t b, uint64_t* out) {
+  return __builtin_mul_overflow(a, b, out);
+}
 
 cl_int
 pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
@@ -436,16 +444,26 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
   }
   uint id = program_ids[uint64_t(kernel->program)];
 
-    uint64_t num_thread = 32;
+    uint64_t num_thread = 0;
     if (vt_dev_caps(nullptr, VT_CAPS_MAX_THREADS, &num_thread) != 0) {
-      num_thread = 32;
+      POCL_MSG_ERR("ERROR: vt_dev_caps(VT_CAPS_MAX_THREADS) failed\n");
+      abort();
     }
     num_thread = get_env_u64("NUM_THREAD", num_thread);
+    uint64_t num_sm = 0;
+    if (vt_dev_caps(nullptr, VT_CAPS_MAX_CORES, &num_sm) != 0) {
+      POCL_MSG_ERR("ERROR: vt_dev_caps(VT_CAPS_MAX_CORES) failed\n");
+      abort();
+    }
+    uint64_t num_wg_slot_per_sm = 0;
+    if (vt_dev_caps(nullptr, VT_CAPS_MAX_WG_SLOTS, &num_wg_slot_per_sm) != 0) {
+      POCL_MSG_ERR("ERROR: vt_dev_caps(VT_CAPS_MAX_WG_SLOTS) failed\n");
+      abort();
+    }
     uint64_t num_warp=(pc->local_size[0]*pc->local_size[1]*pc->local_size[2] + num_thread-1)/ num_thread;
     uint64_t num_workgroups[3];
     num_workgroups[0]=pc->num_groups[0];num_workgroups[1]=pc->num_groups[1];num_workgroups[2]=pc->num_groups[2];
     uint64_t num_workgroup=num_workgroups[0]*num_workgroups[1]*num_workgroups[2];
-    uint64_t num_processor=num_warp*num_workgroup;
     uint64_t ldssize=0x1000;
     uint64_t pdssize=0x1000;
     uint64_t pdsbase=0x8a000000;
@@ -730,13 +748,27 @@ step5 make a writefile for chisel
 
 
 //prepare privatemem
-  uint64_t pds_src_size=pdssize*num_thread*num_warp*num_workgroup;
+  uint64_t pds_bytes_per_wf = 0;
+  uint64_t pds_bytes_per_wg = 0;
+  uint64_t max_resident_wg = 0;
+  uint64_t pds_src_size = 0;
 
-  // Now spike run workgroups one by one, to fix the over 4G issue
-  // Spike specified the pdssize to 0x10000000 for each workgroup now
-  if (pds_src_size > 0x10000000) {
-    pds_src_size = 0x10000000;
-    POCL_MSG_PRINT_VENTUS("pdssize setting to 0x%x\n", 0x10000000);
+  if (mul_u64_overflow(num_thread, pdssize, &pds_bytes_per_wf)
+      || mul_u64_overflow(num_warp, pds_bytes_per_wf, &pds_bytes_per_wg)) {
+    POCL_MSG_ERR("ERROR: PDS pool size overflow\n");
+    abort();
+  }
+
+  if (mul_u64_overflow(num_sm, num_wg_slot_per_sm, &max_resident_wg)
+      || mul_u64_overflow(pds_bytes_per_wg, max_resident_wg, &pds_src_size)) {
+    POCL_MSG_ERR("ERROR: PDS pool size overflow\n");
+    abort();
+  }
+
+  if (max_resident_wg == 0 || pds_src_size == 0) {
+    POCL_MSG_ERR("ERROR: invalid PDS pool size 0 (wf_size=%lu, pdsSize=%lu, num_warp=%lu, num_sm=%lu, wg_slot=%lu)\n",
+                 num_thread, pdssize, num_warp, num_sm, num_wg_slot_per_sm);
+    abort();
   }
 
   uint64_t pds_dev_mem_addr;
