@@ -27,8 +27,23 @@ if(MSVC)
   set_source_files_properties( pocl_ventus.h pocl_ventus.cc PROPERTIES LANGUAGE CXX )
 endif(MSVC)
 
-add_pocl_device_library("pocl-devices-ventus" pocl_ventus.h pocl_ventus.cc loadelf.cpp)
-target_include_directories(pocl-devices-ventus PRIVATE ${VENTUS_INSTALL_PREFIX}/include)
+set(VENTUS_DRIVER_COMMON_DIR "${CMAKE_SOURCE_DIR}/../driver/common")
+set(VENTUS_DRIVER_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../driver/include")
+
+add_pocl_device_library(
+  "pocl-devices-ventus"
+  pocl_ventus.h
+  pocl_ventus.cc
+  loadelf.cpp
+  ${VENTUS_DRIVER_COMMON_DIR}/ventus_perf_recorder.cpp
+)
+target_include_directories(
+  pocl-devices-ventus
+  PRIVATE
+  ${VENTUS_DRIVER_INCLUDE_DIR}
+  ${VENTUS_DRIVER_COMMON_DIR}
+  ${VENTUS_INSTALL_PREFIX}/include
+)
 target_link_libraries(pocl-devices-ventus PRIVATE ventus_driver)
 target_link_libraries(pocl-devices-ventus PRIVATE elf)
 target_link_directories(pocl-devices-ventus PRIVATE ${CMAKE_INSTALL_PREFIX}/lib)

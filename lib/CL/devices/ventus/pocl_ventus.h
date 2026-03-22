@@ -11,6 +11,13 @@
 #include "prototypes.inc"
 
 #ifdef __cplusplus
+#include <map>
+#include <memory>
+#include <string>
+#include "ventus_perf_recorder.hpp"
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -48,6 +55,11 @@ typedef struct vt_device_data_t {
   
   /* printf buffer */
   void *printf_buffer;
+
+#ifdef __cplusplus
+  std::unique_ptr<vtperf::Recorder> perf_recorder;
+  std::map<std::string, uint64_t> kernel_occurrences;
+#endif
 }vt_device_data_t;
 
 void pocl_ventus_init_device_ops(struct pocl_device_ops *ops);

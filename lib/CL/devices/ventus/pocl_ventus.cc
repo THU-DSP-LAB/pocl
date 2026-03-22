@@ -65,6 +65,7 @@
 
   // from driver/include/ventus.h
 //#if !defined(ENABLE_LLVM)
+#include "ventus_perf_scope.hpp"
 #include "ventus.h"
 #include "pocl_ventus.h"
 //#endif
@@ -130,6 +131,74 @@ static const char *ventus_objdump_flags[] = {
 };
 
 static std::map<uint64_t, uint> program_ids;
+
+static uint64_t fnv1a64(const std::string &value) {
+  uint64_t hash = 1469598103934665603ull;
+  for (unsigned char c : value) {
+    hash ^= static_cast<uint64_t>(c);
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
+static vtperf::Recorder* perf_recorder_for_device(vt_device_data_t* device_data) {
+  return device_data == nullptr ? nullptr : device_data->perf_recorder.get();
+}
+
+static std::unique_ptr<vtperf::ScopedEvent> make_pocl_event(
+    vt_device_data_t* device_data, const std::string& event_type
+) {
+  vtperf::Recorder* recorder = perf_recorder_for_device(device_data);
+  if (recorder == nullptr) return nullptr;
+  return std::make_unique<vtperf::ScopedEvent>(*recorder, "pocl", event_type);
+}
+
+static void set_kernel_fields(
+    vtperf::CompleteEvent& event, const std::string& kernel_name,
+    uint64_t kernel_occurrence, uint64_t kernel_signature_hash, uint64_t launch_seq
+) {
+  event.kernel_name = kernel_name;
+  event.kernel_occurrence = kernel_occurrence;
+  event.kernel_signature_hash = kernel_signature_hash;
+  event.launch_seq = launch_seq;
+}
+
+static uint64_t next_kernel_occurrence(
+    vt_device_data_t* device_data, const std::string& kernel_name
+) {
+  uint64_t& value = device_data->kernel_occurrences[kernel_name];
+  value += 1;
+  return value;
+}
+
+class DriverPerfContextGuard final {
+public:
+  DriverPerfContextGuard(
+      vt_device_data_t* device_data, const std::string& kernel_name,
+      uint64_t kernel_occurrence, uint64_t kernel_signature_hash, uint64_t launch_seq
+  ) : device_data_(device_data), active_(false) {
+    if (device_data_ == nullptr) return;
+    if (perf_recorder_for_device(device_data_) == nullptr) return;
+    vt_perf_context_t context;
+    vtperf::clear_perf_context(&context);
+    const auto snapshot = vtperf::current_scope_snapshot();
+    context.launch_seq = launch_seq;
+    context.kernel_occurrence = kernel_occurrence;
+    context.kernel_signature_hash = kernel_signature_hash;
+    vtperf::copy_perf_context_string(context.kernel_name, kernel_name);
+    vtperf::copy_perf_context_string(context.scope_id, snapshot.scope_id);
+    vtperf::copy_perf_context_string(context.parent_event_id, snapshot.event_id);
+    if (vt_set_perf_context(device_data_->vt_device, &context) == 0) active_ = true;
+  }
+
+  ~DriverPerfContextGuard() {
+    if (active_) vt_clear_perf_context(device_data_->vt_device);
+  }
+
+private:
+  vt_device_data_t* device_data_;
+  bool active_;
+};
 
 void
 pocl_ventus_init_device_ops(struct pocl_device_ops *ops)
@@ -255,7 +324,7 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   cl_int ret = CL_SUCCESS;
   int err;
 
-  d = (struct vt_device_data_t *) calloc (1, sizeof (struct vt_device_data_t));
+  d = new vt_device_data_t();
   if (d == NULL)
     return CL_OUT_OF_HOST_MEMORY;
 
@@ -263,7 +332,7 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
 
   err = vt_dev_open(&vt_device);
   if (err != 0) {
-    free(d);
+    delete d;
     return CL_DEVICE_NOT_FOUND;
   }
 
@@ -281,6 +350,18 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   d->vt_device   = vt_device;
 
   d->current_kernel = NULL;
+  if (vtperf::perf_requested_from_env()) {
+    try {
+      d->perf_recorder = std::make_unique<vtperf::Recorder>(
+          vtperf::recorder_config_from_env()
+      );
+    } catch (const std::exception& error) {
+      POCL_MSG_ERR("ventus perf recorder init failed: %s\n", error.what());
+      vt_dev_close(vt_device);
+      delete d;
+      return CL_INVALID_DEVICE;
+    }
+  }
 
   dev->data = d;
 
@@ -430,13 +511,29 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
   pocl_kernel_metadata_t *meta = kernel->meta;
   struct pocl_context *pc = &cmd->command.run.pc;
   int err;
-  //calculating number of kernel name appears.
-  static std::map<std::string, int> knl_name_list;
-  auto it = knl_name_list.find(meta->name);
-  if(it != knl_name_list.end())
-      it->second++;
-  else
-      knl_name_list[meta->name] = 0;
+
+/*
+step1 upload kernel_rom & allocate its mem (load cache file?)
+step2 allocate kernel argument & arg buffer
+      notice kernel arg buffer is offered by command.run.
+step3 prepare kernel metadata (pc(start_pc=8000) & kernel entrance(0x8000005c) & arg pointer )
+step4 prepare driver metadata
+step5 make a writefile for chisel
+*/
+  assert(cmd->device->data != NULL);
+  d = (struct vt_device_data_t *)cmd->device->data;
+  const uint64_t launch_seq = vtperf::next_launch_sequence();
+  const std::string kernel_name = meta->name;
+  const uint64_t kernel_occurrence = next_kernel_occurrence(d, kernel_name);
+  const uint64_t kernel_signature_hash = fnv1a64(kernel_name);
+  const int kernel_log_index = static_cast<int>(kernel_occurrence - 1);
+  auto kernel_submit_scope = make_pocl_event(d, "kernel_submit");
+  if (kernel_submit_scope) {
+    set_kernel_fields(
+        kernel_submit_scope->event(), kernel_name, kernel_occurrence,
+        kernel_signature_hash, launch_seq
+    );
+  }
 
   if(program_ids.find(uint64_t(kernel->program)) == program_ids.end()) {
       POCL_MSG_ERR("ERROR: program id not found\n");
@@ -475,27 +572,29 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
     uint64_t local_arg[meta->num_args];
 
 #ifdef PRINT_CHISEL_TESTCODE
-    std::string metadata_name_s = std::string(meta->name)+"_"+std::to_string(knl_name_list[meta->name])+".metadata";
+    std::string metadata_name_s = std::string(meta->name)+"_"+std::to_string(kernel_log_index)+".metadata";
     const char *c_metadata_name = metadata_name_s.c_str();
-    std::string data_name_s = std::string(meta->name)+"_"+std::to_string(knl_name_list[meta->name])+".data";
+    std::string data_name_s = std::string(meta->name)+"_"+std::to_string(kernel_log_index)+".data";
     const char *c_data_name = data_name_s.c_str();
     FILE *fp_metadata=fopen(c_metadata_name,"w");
     FILE *fp_data=fopen(c_data_name,"w");
 #endif
 
-/*
-step1 upload kernel_rom & allocate its mem (load cache file?)
-step2 allocate kernel argument & arg buffer
-      notice kernel arg buffer is offered by command.run.
-step3 prepare kernel metadata (pc(start_pc=8000) & kernel entrance(0x8000005c) & arg pointer )
-step4 prepare driver metadata
-step5 make a writefile for chisel
-*/
-  assert(cmd->device->data != NULL);
-  d = (struct vt_device_data_t *)cmd->device->data;
-
 
   // preprocess some kernel arguments
+  auto kernel_arg_pack_scope = make_pocl_event(d, "kernel_arg_pack");
+  if (kernel_arg_pack_scope) {
+    set_kernel_fields(
+        kernel_arg_pack_scope->event(), kernel_name, kernel_occurrence,
+        kernel_signature_hash, launch_seq
+    );
+  }
+  std::unique_ptr<DriverPerfContextGuard> kernel_arg_pack_context;
+  if (kernel_arg_pack_scope) {
+    kernel_arg_pack_context = std::make_unique<DriverPerfContextGuard>(
+        d, kernel_name, kernel_occurrence, kernel_signature_hash, launch_seq
+    );
+  }
   std::vector<std::any> args(meta->num_args + meta->num_locals);
   //TODO 1: support local buffer as argument. Notice in current structure, allocated localmembuffer will be mapped to ddr space.
   //TODO 2: print buffer support in pocl
@@ -599,6 +698,7 @@ step5 make a writefile for chisel
           // *(void **)(arguments[j]) = pp;
         }
     }
+  kernel_arg_pack_context.reset();
 
   /*pc->printf_buffer = d->printf_buffer;
   assert (pc->printf_buffer != NULL);
@@ -665,6 +765,19 @@ step5 make a writefile for chisel
       }
   }
   POCL_MSG_PRINT_VENTUS("Allocating kernel arg buffer entry:\n");
+  auto kernel_arg_upload_scope = make_pocl_event(d, "kernel_arg_upload");
+  if (kernel_arg_upload_scope) {
+    set_kernel_fields(
+        kernel_arg_upload_scope->event(), kernel_name, kernel_occurrence,
+        kernel_signature_hash, launch_seq
+    );
+  }
+  std::unique_ptr<DriverPerfContextGuard> kernel_arg_upload_context;
+  if (kernel_arg_upload_scope) {
+    kernel_arg_upload_context = std::make_unique<DriverPerfContextGuard>(
+        d, kernel_name, kernel_occurrence, kernel_signature_hash, launch_seq
+    );
+  }
   uint64_t arg_dev_mem_addr;
   if (abuf_size == 0) {
     arg_dev_mem_addr = 0;
@@ -688,6 +801,7 @@ step5 make a writefile for chisel
       abort();
     }
   }
+  kernel_arg_upload_context.reset();
   /**********************************************************************************************************/
 
   //after checking pocl_cache_binary, use the following to pass in.
@@ -738,7 +852,22 @@ step5 make a writefile for chisel
   uint64_t pc_dev_mem_addr = 0x80000000;
 
   // Upload the kernel ELF to Ventus driver
-  vt_upload_kernel_file(d->vt_device, binary_filename, 0);
+  auto kernel_elf_upload_scope = make_pocl_event(d, "kernel_elf_upload");
+  if (kernel_elf_upload_scope) {
+    set_kernel_fields(
+        kernel_elf_upload_scope->event(), kernel_name, kernel_occurrence,
+        kernel_signature_hash, launch_seq
+    );
+  }
+  {
+    std::unique_ptr<DriverPerfContextGuard> kernel_elf_upload_context;
+    if (kernel_elf_upload_scope) {
+      kernel_elf_upload_context = std::make_unique<DriverPerfContextGuard>(
+          d, kernel_name, kernel_occurrence, kernel_signature_hash, launch_seq
+      );
+    }
+    vt_upload_kernel_file(d->vt_device, binary_filename, 0);
+  }
   #ifdef PRINT_CHISEL_TESTCODE
 	fp_write_file(fp_metadata, &(pc_dev_mem_addr), sizeof(uint64_t));
   std::vector<MemBlock> elf_data = get_data_from_elf(binary_filename, nullptr);
@@ -804,6 +933,19 @@ step5 make a writefile for chisel
   memcpy(kernel_metadata+KNL_GL_OFFSET_Z,&global_offset_32[2],4);
 //memcpy(kernel_metadata+KNL_PRINT_ADDR,global_offset_32[0],4);
     POCL_MSG_PRINT_VENTUS("Allocating metadata space:\n");
+  auto kernel_metadata_upload_scope = make_pocl_event(d, "kernel_metadata_upload");
+  if (kernel_metadata_upload_scope) {
+    set_kernel_fields(
+        kernel_metadata_upload_scope->event(), kernel_name, kernel_occurrence,
+        kernel_signature_hash, launch_seq
+    );
+  }
+  std::unique_ptr<DriverPerfContextGuard> kernel_metadata_upload_context;
+  if (kernel_metadata_upload_scope) {
+    kernel_metadata_upload_context = std::make_unique<DriverPerfContextGuard>(
+        d, kernel_name, kernel_occurrence, kernel_signature_hash, launch_seq
+    );
+  }
   uint64_t knl_dev_mem_addr;
   err = vt_buf_alloc(d->vt_device, KNL_MAX_METADATA_SIZE, &knl_dev_mem_addr,0,0,0);
   if (err != 0) {
@@ -813,6 +955,7 @@ step5 make a writefile for chisel
   if (err != 0) {
     abort();
   }
+  kernel_metadata_upload_context.reset();
   POCL_MSG_PRINT_VENTUS("kernel metadata has been written to 0x%lx\n", knl_dev_mem_addr);
   #ifdef PRINT_CHISEL_TESTCODE
   g_vt_dump_mem.emplace_back(knl_dev_mem_addr, KNL_MAX_METADATA_SIZE, std::vector<uint8_t>(kernel_metadata, kernel_metadata + KNL_MAX_METADATA_SIZE));
@@ -878,12 +1021,35 @@ step5 make a writefile for chisel
 
 //pass metadata to "run"
   // quick off kernel execution
-  err = vt_start(d->vt_device, &driver_meta,0);
-  assert(0 == err);
+  {
+    std::unique_ptr<DriverPerfContextGuard> kernel_submit_context;
+    if (kernel_submit_scope) {
+      kernel_submit_context = std::make_unique<DriverPerfContextGuard>(
+          d, kernel_name, kernel_occurrence, kernel_signature_hash, launch_seq
+      );
+    }
+    err = vt_start(d->vt_device, &driver_meta,0);
+    assert(0 == err);
+  }
 
   // wait for the execution to complete
-  err = vt_ready_wait(d->vt_device, 1000);
-  assert(0 == err);
+  auto kernel_wait_scope = make_pocl_event(d, "kernel_wait");
+  if (kernel_wait_scope) {
+    set_kernel_fields(
+        kernel_wait_scope->event(), kernel_name, kernel_occurrence,
+        kernel_signature_hash, launch_seq
+    );
+  }
+  {
+    std::unique_ptr<DriverPerfContextGuard> kernel_wait_context;
+    if (kernel_wait_scope) {
+      kernel_wait_context = std::make_unique<DriverPerfContextGuard>(
+          d, kernel_name, kernel_occurrence, kernel_signature_hash, launch_seq
+      );
+    }
+    err = vt_ready_wait(d->vt_device, 1000);
+    assert(0 == err);
+  }
 
   // move print buffer back or wait to read?
 
@@ -896,7 +1062,7 @@ step5 make a writefile for chisel
     if(logfp) {
         fclose(logfp);
         strcpy(newName, meta->name);
-        sprintf(newName, "%s_%d.log",meta->name,knl_name_list[meta->name]);
+        sprintf(newName, "%s_%d.log",meta->name,kernel_log_index);
         //strcat(newName, ".log");
         if(rename(sp_logname, newName) == 0) {
             POCL_MSG_PRINT_VENTUS("Log file %s renamed successfully to %s.\n", sp_logname, newName);
@@ -929,7 +1095,7 @@ pocl_ventus_uninit (unsigned j, cl_device_id device)
   vt_dev_close(d->vt_device);
 
   POCL_DESTROY_LOCK(d->cq_lock);
-  POCL_MEM_FREE(d);
+  delete d;
   device->data = NULL;
 
   return CL_SUCCESS;
@@ -941,19 +1107,31 @@ pocl_ventus_reinit (unsigned j, cl_device_id device)
   struct vt_device_data_t *d;
   int err;
 
-  d = (struct vt_device_data_t *) calloc (1, sizeof (struct vt_device_data_t));
+  d = new vt_device_data_t();
   if (d == NULL)
     return CL_OUT_OF_HOST_MEMORY;
 
   vt_device_h vt_device;
   err = vt_dev_open(&vt_device);
   if (err != 0) {
-    free(d);
+    delete d;
     return CL_DEVICE_NOT_FOUND;
   }
 
   d->vt_device = vt_device;
   d->current_kernel = NULL;
+  if (vtperf::perf_requested_from_env()) {
+    try {
+      d->perf_recorder = std::make_unique<vtperf::Recorder>(
+          vtperf::recorder_config_from_env()
+      );
+    } catch (const std::exception& error) {
+      POCL_MSG_ERR("ventus perf recorder init failed: %s\n", error.what());
+      vt_dev_close(vt_device);
+      delete d;
+      return CL_INVALID_DEVICE;
+    }
+  }
 
   POCL_INIT_LOCK (d->cq_lock);
   device->data = d;
@@ -1061,6 +1239,7 @@ pocl_ventus_compile_kernel (_cl_command_node *cmd, cl_kernel kernel,
 void pocl_ventus_free(cl_device_id device, cl_mem memobj) {
   cl_mem_flags flags = memobj->flags;
   vt_device_data_t* d = (vt_device_data_t *)device->data;
+  auto perf_scope = make_pocl_event(d, "buffer_free");
   uint64_t dev_mem_addr = reinterpret_cast<uint64_t>(memobj->device_ptrs[device->dev_id].mem_ptr);
 
   /* The host program can provide the runtime with a pointer
@@ -1087,6 +1266,7 @@ pocl_ventus_alloc_mem_obj(cl_device_id device, cl_mem mem_obj, void *host_ptr) {
 
   cl_mem_flags flags = mem_obj->flags;
   vt_device_data_t* d = (vt_device_data_t *)device->data;
+  auto perf_scope = make_pocl_event(d, "buffer_alloc");
   pocl_global_mem_t *mem = device->global_memory;
   int err;
   uint64_t dev_mem_addr;
@@ -1132,6 +1312,7 @@ void pocl_ventus_read(void *data,
                       size_t offset,
                       size_t size) {
   struct vt_device_data_t *d = (struct vt_device_data_t *)data;
+  auto perf_scope = make_pocl_event(d, "buffer_read");
   int err = vt_copy_from_dev(
       d->vt_device, reinterpret_cast<uint64_t>(src_mem_id->mem_ptr) + offset,
       host_ptr, size, 0, 0);
@@ -1145,6 +1326,7 @@ void pocl_ventus_write(void *data,
                        size_t offset,
                        size_t size) {
   struct vt_device_data_t *d = (struct vt_device_data_t *)data;
+  auto perf_scope = make_pocl_event(d, "buffer_write");
   int err = vt_copy_to_dev(
       d->vt_device, reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr) + offset,
       host_ptr, size, 0, 0);
@@ -1170,6 +1352,7 @@ pocl_ventus_driver_copy (void *data, pocl_mem_identifier *dst_mem_id, cl_mem dst
                   size_t dst_offset, size_t src_offset, size_t size)
 {
     vt_device_data_t *d = (vt_device_data_t *)data;
+    auto perf_scope = make_pocl_event(d, "buffer_copy");
     char *__restrict__ src_ptr = (char *)src_mem_id->mem_ptr;
     char *__restrict__ dst_ptr = (char *)dst_mem_id->mem_ptr;
 
@@ -1335,6 +1518,7 @@ pocl_ventus_memfill (void *data, pocl_mem_identifier *dst_mem_id,
                      const void *__restrict__ pattern, size_t pattern_size)
 {
   struct vt_device_data_t *d = (struct vt_device_data_t *)data;
+  auto perf_scope = make_pocl_event(d, "buffer_fill");
   void *host_ptr = pocl_aligned_malloc(MAX_EXTENDED_ALIGNMENT, size);
   assert(host_ptr);
   uint64_t dev_addr = reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr) + offset;
@@ -1353,6 +1537,7 @@ pocl_ventus_map_mem (void *data, pocl_mem_identifier *src_mem_id,
                                  cl_mem src_buf, mem_mapping_t *map)
 {
     struct vt_device_data_t *d = (struct vt_device_data_t *)data;
+    auto perf_scope = make_pocl_event(d, "map_mem");
     uint64_t dev_addr = reinterpret_cast<uint64_t>(src_mem_id->mem_ptr) + map->offset;
 
     assert (map->host_ptr);
@@ -1374,6 +1559,7 @@ pocl_ventus_unmap_mem (void *data, pocl_mem_identifier *dst_mem_id,
                        cl_mem dst_buf, mem_mapping_t *map)
 {
     struct vt_device_data_t *d = (struct vt_device_data_t *)data;
+    auto perf_scope = make_pocl_event(d, "unmap_mem");
     uint64_t dev_addr = reinterpret_cast<uint64_t>(dst_mem_id->mem_ptr) + map->offset;
     assert (map->host_ptr);
 
