@@ -150,6 +150,7 @@ static std::unique_ptr<vtperf::ScopedEvent> make_pocl_event(
 ) {
   vtperf::Recorder* recorder = perf_recorder_for_device(device_data);
   if (recorder == nullptr) return nullptr;
+  if (!recorder->should_record_event("pocl", event_type)) return nullptr;
   return std::make_unique<vtperf::ScopedEvent>(*recorder, "pocl", event_type);
 }
 
