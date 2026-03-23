@@ -489,10 +489,10 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   return ret;
 }
 
-#define PRINT_CHISEL_TESTCODE
+// #define PRINT_CHISEL_TESTCODE
 // 用于生成metadata/data文件
-std::vector<MemBlock> g_vt_dump_mem;
 #ifdef PRINT_CHISEL_TESTCODE
+std::vector<MemBlock> g_vt_dump_mem;
 
 void fp_write_file(FILE *fp, const void *p, uint64_t size){
   for (size_t i = 0; i < (size+sizeof(uint32_t)-1) / sizeof(uint32_t); ++i)
@@ -527,7 +527,9 @@ step5 make a writefile for chisel
   const std::string kernel_name = meta->name;
   const uint64_t kernel_occurrence = next_kernel_occurrence(d, kernel_name);
   const uint64_t kernel_signature_hash = fnv1a64(kernel_name);
+#ifdef PRINT_CHISEL_TESTCODE
   const int kernel_log_index = static_cast<int>(kernel_occurrence - 1);
+#endif
   auto kernel_submit_scope = make_pocl_event(d, "kernel_submit");
   if (kernel_submit_scope) {
     set_kernel_fields(
@@ -850,7 +852,9 @@ step5 make a writefile for chisel
 
 
   uint64_t pc_src_size=0x10000000;
+#ifdef PRINT_CHISEL_TESTCODE
   uint64_t pc_dev_mem_addr = 0x80000000;
+#endif
 
   // Upload the kernel ELF to Ventus driver
   auto kernel_elf_upload_scope = make_pocl_event(d, "kernel_elf_upload");
@@ -1054,6 +1058,7 @@ step5 make a writefile for chisel
 
   // move print buffer back or wait to read?
 
+#ifdef PRINT_CHISEL_TESTCODE
     // rename log file from spike and add index for log
     char sp_logname[256];
     strcpy(sp_logname, filename);
@@ -1071,6 +1076,7 @@ step5 make a writefile for chisel
             POCL_MSG_PRINT_VENTUS("Unable to rename the log file %s.\n", sp_logname);
         }
     }
+#endif
 
     err |= vt_one_buf_free(d->vt_device, KNL_MAX_METADATA_SIZE, &knl_dev_mem_addr, 0, 0);
     err |= vt_one_buf_free(d->vt_device, pds_src_size, &pds_dev_mem_addr, 0, 0);
@@ -1279,11 +1285,13 @@ pocl_ventus_alloc_mem_obj(cl_device_id device, cl_mem mem_obj, void *host_ptr) {
       return CL_MEM_OBJECT_ALLOCATION_FAILURE;
   }
   mem_obj->device_ptrs[device->dev_id].mem_ptr = reinterpret_cast<void*>(dev_mem_addr);
+#ifdef PRINT_CHISEL_TESTCODE
   assert(!std::any_of(g_vt_dump_mem.begin(), g_vt_dump_mem.end(),
              [dev_mem_addr](const MemBlock &mb) {
                return mb.vaddr == dev_mem_addr;
              }));
   g_vt_dump_mem.emplace_back(dev_mem_addr, mem_obj->size);
+#endif
 
   // if the memory object has been allocated device memory pointer and
   // if the flags indicates that copy data from host ptr, then do the following operations.
@@ -1295,7 +1303,9 @@ pocl_ventus_alloc_mem_obj(cl_device_id device, cl_mem mem_obj, void *host_ptr) {
       if (err != 0) {
         return CL_MEM_OBJECT_ALLOCATION_FAILURE;
       }
+#ifdef PRINT_CHISEL_TESTCODE
       g_vt_dump_mem.back().data.assign((uint8_t*)mem_obj->mem_host_ptr, (uint8_t*)mem_obj->mem_host_ptr + mem_obj->size);
+#endif
     }
   }
 
