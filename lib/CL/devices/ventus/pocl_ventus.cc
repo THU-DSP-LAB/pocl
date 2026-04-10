@@ -1624,10 +1624,16 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
       return -1;
     }
 	}
-  std::stringstream ss_cmd;
+	std::stringstream ss_cmd;
 	std::stringstream ss_out;
 
   char program_bc_path[POCL_FILENAME_LENGTH];
+  cl_device_id device = program->devices[device_i];
+  auto* d = static_cast<vt_device_data_t*>(device->data);
+  auto compiler_scope = make_pocl_event(d, "compiler");
+  if (compiler_scope && program->kernel_meta != nullptr && program->kernel_meta->name != nullptr) {
+    compiler_scope->event().kernel_name = program->kernel_meta->name;
+  }
 
   static uint counter = 0;
   program_ids.insert(std::pair<uint64_t, uint>(uint64_t(program), counter));
@@ -1647,8 +1653,6 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
   std::ofstream outfile(cl_filename);
   outfile << program->source;
   outfile.close();
-
-  cl_device_id device = program->devices[device_i];
 
     ss_cmd << clang_path <<" -cl-std=CL2.0 " << "-target " << device->llvm_target_triplet << " -mcpu=" << device->llvm_cpu  << " " << cl_filename << "  " << " -o " << filename << ".riscv ";
 	for(int i = 0; ventus_final_ld_flags[i] != NULL; i++) {
