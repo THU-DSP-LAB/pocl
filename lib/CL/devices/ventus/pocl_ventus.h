@@ -23,8 +23,7 @@ extern "C" {
 
 #define POCL_MSG_PRINT_VENTUS(...) POCL_MSG_PRINT_INFO_F(VENTUS, "", __VA_ARGS__)
 
-#define ventus_local_base 0x80000000
-#define ventus_local_size_total 0
+#define ventus_local_base 0x70000000
 
 GEN_PROTOTYPES (ventus)
 
@@ -78,6 +77,8 @@ void pocl_ventus_notify (cl_device_id device, cl_event event, cl_event finished)
 void
 pocl_ventus_compile_kernel (_cl_command_node *cmd, cl_kernel kernel,
                            cl_device_id device, int specialize);
+int pocl_ventus_free_program(cl_device_id device, cl_program program,
+                             unsigned program_device_i);
 void pocl_ventus_free(cl_device_id device, cl_mem memobj);
 cl_int
 pocl_ventus_alloc_mem_obj(cl_device_id device, cl_mem mem_obj, void *host_ptr);

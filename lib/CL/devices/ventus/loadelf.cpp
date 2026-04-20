@@ -10,6 +10,20 @@
 #include <spdlog/spdlog.h>
 #include <unistd.h>
 
+static std::vector<uint8_t> collect_section_bytes(Elf_Scn *scn) {
+    std::vector<uint8_t> bytes;
+    for (Elf_Data *data = elf_getdata(scn, nullptr); data != nullptr;
+         data = elf_getdata(scn, data)) {
+        if (data->d_buf == nullptr || data->d_size == 0) {
+            continue;
+        }
+
+        const auto *buf = static_cast<const uint8_t *>(data->d_buf);
+        bytes.insert(bytes.end(), buf, buf + data->d_size);
+    }
+    return bytes;
+}
+
 // 分析 ELF 文件，返回所有加载到内存中的段信息
 std::vector<MemBlock> get_data_from_elf(const char *filename, std::shared_ptr<spdlog::logger> logger) {
     std::vector<MemBlock> blocks;
@@ -174,6 +188,71 @@ std::optional<uint64_t> get_symbol_value_from_elf(const char *filename,
         if (result.has_value()) {
             break;
         }
+    }
+
+    elf_end(e);
+    close(fd);
+    return result;
+}
+
+std::optional<std::vector<uint8_t>> get_section_data_from_elf(
+    const char *filename, const char *section_name, std::shared_ptr<spdlog::logger> logger
+) {
+    if (!section_name || section_name[0] == '\0') {
+        return std::nullopt;
+    }
+    if (!logger) {
+        logger = spdlog::default_logger();
+    }
+
+    if (elf_version(EV_CURRENT) == EV_NONE) {
+        logger->error("ELF: cannot initialize libelf");
+        return std::nullopt;
+    }
+
+    int fd = open(filename, O_RDONLY);
+    if (fd < 0) {
+        const char *errstr = strerror(errno);
+        logger->error("ELF: cannot open file '{}': {}", filename, errstr);
+        return std::nullopt;
+    }
+
+    Elf *e = elf_begin(fd, ELF_C_READ, nullptr);
+    if (!e) {
+        logger->error("ELF: elf_begin failed: {}", elf_errmsg(-1));
+        close(fd);
+        return std::nullopt;
+    }
+
+    size_t shstrndx = 0;
+    if (elf_getshdrstrndx(e, &shstrndx) != 0) {
+        logger->error("ELF: elf_getshdrstrndx failed: {}", elf_errmsg(-1));
+        elf_end(e);
+        close(fd);
+        return std::nullopt;
+    }
+
+    std::optional<std::vector<uint8_t>> result = std::nullopt;
+    Elf_Scn *scn = nullptr;
+    while ((scn = elf_nextscn(e, scn)) != nullptr) {
+        GElf_Shdr shdr;
+        if (gelf_getshdr(scn, &shdr) == nullptr) {
+            logger->error("ELF: gelf_getshdr failed: {}", elf_errmsg(-1));
+            break;
+        }
+
+        const char *name = elf_strptr(e, shstrndx, shdr.sh_name);
+        if (!name || strcmp(name, section_name) != 0) {
+            continue;
+        }
+
+        std::vector<uint8_t> bytes = collect_section_bytes(scn);
+        if (bytes.empty() && shdr.sh_size != 0) {
+            logger->error("ELF: section '{}' has no data", section_name);
+            break;
+        }
+        result = std::move(bytes);
+        break;
     }
 
     elf_end(e);

@@ -50,6 +50,7 @@
 #include <fstream>
 #include <algorithm>
 #include <map>
+#include <sys/wait.h>
 
 #include "pocl_util.h"
 #include "pocl_cache.h"
@@ -78,23 +79,6 @@
 
   /* ENABLE_LLVM means to compile the kernel using pocl compiler,
  but for ventus(ventus has its own LLVM) it should be OFF. */
-
-
-#define KNL_ENTRY 0
-#define KNL_ARG_BASE 4
-#define KNL_WORK_DIM 8
-#define KNL_GL_SIZE_X 12
-#define KNL_GL_SIZE_Y 16
-#define KNL_GL_SIZE_Z 20
-#define KNL_LC_SIZE_X 24
-#define KNL_LC_SIZE_Y 28
-#define KNL_LC_SIZE_Z 32
-#define KNL_GL_OFFSET_X 36
-#define KNL_GL_OFFSET_Y 40
-#define KNL_GL_OFFSET_Z 44
-#define KNL_PRINT_ADDR 48
-#define KNL_PRINT_SIZE 52
-#define KNL_MAX_METADATA_SIZE 64
 
 // FIXME: Do not use hardcoded library search path!
 static const char *ventus_final_ld_flags[] = {
@@ -131,6 +115,42 @@ static const char *ventus_objdump_flags[] = {
 };
 
 static std::map<uint64_t, uint> program_ids;
+
+struct VentusKernelResourceV2 final {
+  uint32_t version;
+  uint32_t flags;
+  uint64_t vgpr_used;
+  uint64_t sgpr_used;
+  uint64_t lds_static_bytes;
+  uint64_t pds_static_bytes;
+  uint64_t lds_stack_peak_bytes;
+  uint64_t pds_stack_peak_bytes;
+};
+
+static_assert(sizeof(VentusKernelResourceV2) == 56,
+              "VentusKernelResourceV2 layout mismatch");
+
+enum VentusKernelResourceFlags : uint32_t {
+  kVentusResourceHasDynamicAlloca = 1u << 0,
+  kVentusResourceHasRecursion = 1u << 1,
+  kVentusResourceHasIndirectCall = 1u << 2,
+  kVentusResourceHasUnknownExternalCallee = 1u << 3,
+  kVentusResourceStackPeakUnavailable = 1u << 4,
+  kVentusResourceRegisterUsageIncomplete = 1u << 5,
+};
+
+struct VentusKernelLaunchResources final {
+  uint64_t sgpr_usage = 0;
+  uint64_t vgpr_usage = 0;
+  uint64_t pds_size_per_thread = 0;
+  uint64_t lds_static_per_wg = 0;
+  uint64_t lds_stack_size_per_wf = 0;
+};
+
+struct VentusProgramData final {
+  std::string binary_filename;
+  std::map<std::string, VentusKernelLaunchResources> kernel_resources;
+};
 
 static uint64_t fnv1a64(const std::string &value) {
   uint64_t hash = 1469598103934665603ull;
@@ -238,7 +258,7 @@ pocl_ventus_init_device_ops(struct pocl_device_ops *ops)
   ops->post_build_program = pocl_ventus_post_build_program;
   ops->link_program = NULL;
   ops->build_binary = NULL;
-  ops->free_program = NULL;
+  ops->free_program = pocl_ventus_free_program;
   ops->setup_metadata = pocl_ventus_setup_metadata;
   ops->supports_binary = NULL;
   ops->build_poclbinary = NULL;
@@ -316,6 +336,205 @@ uint64_t get_env_u64(const char* varname, uint64_t default_val) {
 
 static bool mul_u64_overflow(uint64_t a, uint64_t b, uint64_t* out) {
   return __builtin_mul_overflow(a, b, out);
+}
+
+static bool add_u64_overflow(uint64_t a, uint64_t b, uint64_t* out) {
+  return __builtin_add_overflow(a, b, out);
+}
+
+static uint64_t align_up_u64(uint64_t value, uint64_t alignment) {
+  assert(alignment != 0);
+  return ((value + alignment - 1) / alignment) * alignment;
+}
+
+static constexpr uint64_t kVentusResourceAlignment = 128;
+static constexpr uint64_t kVentusRegisterAlignment = 4;
+static constexpr uint64_t kVentusMinSgprUsage = 32;
+static constexpr uint32_t kVentusKernelResourceVersion = 2;
+static constexpr const char *kVentusResourceSectionPrefix = ".ventus.resource.";
+
+static uint get_or_assign_program_id(cl_program program) {
+  const uint64_t key = uint64_t(program);
+  auto it = program_ids.find(key);
+  if (it != program_ids.end()) {
+    return it->second;
+  }
+
+  const uint next_id = static_cast<uint>(program_ids.size());
+  program_ids[key] = next_id;
+  return next_id;
+}
+
+static std::string get_program_binary_filename(cl_program program) {
+  return "object" + std::to_string(get_or_assign_program_id(program)) + ".riscv";
+}
+
+static VentusProgramData *get_ventus_program_data(cl_program program,
+                                                  unsigned program_device_i) {
+  if (program == nullptr || program->data == nullptr) {
+    return nullptr;
+  }
+  return static_cast<VentusProgramData *>(program->data[program_device_i]);
+}
+
+static bool parse_ventus_kernel_resource(const char *binary_filename,
+                                         const char *kernel_name,
+                                         VentusKernelResourceV2 *resource,
+                                         std::string *error) {
+  if (binary_filename == nullptr || kernel_name == nullptr || resource == nullptr) {
+    if (error != nullptr) {
+      *error = "invalid resource parse input";
+    }
+    return false;
+  }
+
+  const std::string section_name =
+      std::string(kVentusResourceSectionPrefix) + kernel_name;
+  auto bytes = get_section_data_from_elf(binary_filename, section_name.c_str(), nullptr);
+  if (!bytes.has_value()) {
+    if (error != nullptr) {
+      *error = "missing section '" + section_name + "'";
+    }
+    return false;
+  }
+  if (bytes->size() != sizeof(VentusKernelResourceV2)) {
+    if (error != nullptr) {
+      *error = "section '" + section_name + "' has unexpected size "
+               + std::to_string(bytes->size());
+    }
+    return false;
+  }
+
+  memcpy(resource, bytes->data(), sizeof(VentusKernelResourceV2));
+  return true;
+}
+
+static bool normalize_ventus_kernel_resources(
+    const VentusKernelResourceV2 &resource, VentusKernelLaunchResources *normalized,
+    std::string *error
+) {
+  if (normalized == nullptr) {
+    if (error != nullptr) {
+      *error = "normalized resource output is null";
+    }
+    return false;
+  }
+  if (resource.version != kVentusKernelResourceVersion) {
+    if (error != nullptr) {
+      *error = "unsupported resource version " + std::to_string(resource.version);
+    }
+    return false;
+  }
+  if ((resource.flags & kVentusResourceStackPeakUnavailable) != 0) {
+    if (error != nullptr) {
+      *error = "StackPeakUnavailable is set";
+    }
+    return false;
+  }
+  if ((resource.flags & kVentusResourceRegisterUsageIncomplete) != 0) {
+    if (error != nullptr) {
+      *error = "RegisterUsageIncomplete is set";
+    }
+    return false;
+  }
+  if (resource.lds_stack_peak_bytes == UINT64_MAX
+      || resource.pds_stack_peak_bytes == UINT64_MAX) {
+    if (error != nullptr) {
+      *error = "resource stack peak is UINT64_MAX";
+    }
+    return false;
+  }
+
+  const uint64_t sgpr_aligned =
+      align_up_u64(resource.sgpr_used, kVentusRegisterAlignment);
+  const uint64_t vgpr_aligned =
+      align_up_u64(resource.vgpr_used, kVentusRegisterAlignment);
+  const uint64_t lds_static_aligned =
+      align_up_u64(resource.lds_static_bytes, kVentusResourceAlignment);
+  const uint64_t lds_stack_aligned =
+      align_up_u64(resource.lds_stack_peak_bytes, kVentusResourceAlignment);
+  const uint64_t pds_static_aligned =
+      align_up_u64(resource.pds_static_bytes, kVentusResourceAlignment);
+  const uint64_t pds_stack_aligned =
+      align_up_u64(resource.pds_stack_peak_bytes, kVentusResourceAlignment);
+  uint64_t pds_size_per_thread = 0;
+  if (add_u64_overflow(pds_static_aligned, pds_stack_aligned,
+                       &pds_size_per_thread)) {
+    if (error != nullptr) {
+      *error = "pds size overflow";
+    }
+    return false;
+  }
+
+  normalized->sgpr_usage = std::max(kVentusMinSgprUsage, sgpr_aligned);
+  normalized->vgpr_usage = vgpr_aligned;
+  normalized->pds_size_per_thread = pds_size_per_thread;
+  normalized->lds_static_per_wg = lds_static_aligned;
+  normalized->lds_stack_size_per_wf = lds_stack_aligned;
+  return true;
+}
+
+static const VentusKernelLaunchResources *get_kernel_launch_resources(
+    cl_program program, unsigned program_device_i, const char *kernel_name
+) {
+  VentusProgramData *program_data =
+      get_ventus_program_data(program, program_device_i);
+  if (program_data == nullptr || kernel_name == nullptr) {
+    return nullptr;
+  }
+
+  auto it = program_data->kernel_resources.find(kernel_name);
+  if (it == program_data->kernel_resources.end()) {
+    return nullptr;
+  }
+  return &it->second;
+}
+
+static bool cache_ventus_program_resources(cl_program program,
+                                           unsigned program_device_i,
+                                           const std::string &binary_filename,
+                                           std::string *error) {
+  auto *program_data = new VentusProgramData();
+  program_data->binary_filename = binary_filename;
+
+  if (program->num_kernels > 0 && program->kernel_meta == nullptr) {
+    delete program_data;
+    if (error != nullptr) {
+      *error = "program kernel metadata is missing";
+    }
+    return false;
+  }
+
+  for (size_t i = 0; i < program->num_kernels; ++i) {
+    const char *kernel_name = program->kernel_meta[i].name;
+    if (kernel_name == nullptr || kernel_name[0] == '\0') {
+      delete program_data;
+      if (error != nullptr) {
+        *error = "kernel metadata has empty name at index " + std::to_string(i);
+      }
+      return false;
+    }
+
+    VentusKernelResourceV2 raw_resource{};
+    if (!parse_ventus_kernel_resource(binary_filename.c_str(), kernel_name,
+                                      &raw_resource, error)) {
+      delete program_data;
+      return false;
+    }
+
+    VentusKernelLaunchResources normalized{};
+    if (!normalize_ventus_kernel_resources(raw_resource, &normalized, error)) {
+      delete program_data;
+      return false;
+    }
+
+    program_data->kernel_resources[kernel_name] = normalized;
+  }
+
+  auto *old_program_data = get_ventus_program_data(program, program_device_i);
+  delete old_program_data;
+  program->data[program_device_i] = program_data;
+  return true;
 }
 
 cl_int
@@ -509,6 +728,7 @@ pocl_ventus_run (void *data, _cl_command_node *cmd)
   unsigned i;
   cl_kernel kernel = cmd->command.run.kernel;
   cl_program program = kernel->program;
+  const unsigned program_device_i = cmd->program_device_i;
   pocl_kernel_metadata_t *meta = kernel->meta;
   struct pocl_context *pc = &cmd->command.run.pc;
   int err;
@@ -538,11 +758,20 @@ step5 make a writefile for chisel
     );
   }
 
-  if(program_ids.find(uint64_t(kernel->program)) == program_ids.end()) {
-      POCL_MSG_ERR("ERROR: program id not found\n");
-      exit(10);
+  VentusProgramData *program_data =
+      get_ventus_program_data(program, program_device_i);
+  if (program_data == nullptr) {
+    POCL_MSG_ERR("ERROR: missing Ventus program data for kernel '%s'\n",
+                 meta->name);
+    abort();
   }
-  uint id = program_ids[uint64_t(kernel->program)];
+  const VentusKernelLaunchResources *resource =
+      get_kernel_launch_resources(program, program_device_i, meta->name);
+  if (resource == nullptr) {
+    POCL_MSG_ERR("ERROR: missing Ventus launch resources for kernel '%s'\n",
+                 meta->name);
+    abort();
+  }
 
     uint64_t num_thread = 0;
     if (vt_dev_caps(nullptr, VT_CAPS_MAX_THREADS, &num_thread) != 0) {
@@ -563,16 +792,20 @@ step5 make a writefile for chisel
     uint64_t num_warp=(pc->local_size[0]*pc->local_size[1]*pc->local_size[2] + num_thread-1)/ num_thread;
     uint64_t num_workgroups[3];
     num_workgroups[0]=pc->num_groups[0];num_workgroups[1]=pc->num_groups[1];num_workgroups[2]=pc->num_groups[2];
-    uint64_t num_workgroup=num_workgroups[0]*num_workgroups[1]*num_workgroups[2];
-    uint64_t ldssize=0x1000;
-    uint64_t pdssize=0x1000;
-    uint64_t pdsbase=0x8a000000;
-    uint64_t start_pc=0x80000000;
-    uint64_t knlbase=0x90000000;
-    uint64_t sgpr_usage=64;
-    uint64_t vgpr_usage=64;
-    uint64_t new_lds_base = ventus_local_base+ventus_local_size_total;
-    uint64_t local_arg[meta->num_args];
+    const uint64_t lds_static_bytes = resource->lds_static_per_wg;
+    const uint64_t lds_stack_size_per_wf = resource->lds_stack_size_per_wf;
+    uint64_t dynamic_lds_bytes = 0;
+    uint64_t ldssize = 0;
+    const uint64_t pdssize = resource->pds_size_per_thread;
+    uint64_t pdsbase = 0;
+    uint64_t knlbase = 0;
+    const uint64_t sgpr_usage = resource->sgpr_usage;
+    const uint64_t vgpr_usage = resource->vgpr_usage;
+    uint64_t lds_stack_total_bytes = 0;
+    if (mul_u64_overflow(num_warp, lds_stack_size_per_wf, &lds_stack_total_bytes)) {
+      POCL_MSG_ERR("ERROR: LDS stack size overflow\n");
+      abort();
+    }
 
 #ifdef PRINT_CHISEL_TESTCODE
     std::string metadata_name_s = std::string(meta->name)+"_"+std::to_string(kernel_log_index)+".metadata";
@@ -611,30 +844,31 @@ step5 make a writefile for chisel
         {
           if (cmd->device->device_alloca_locals)
             {
-                 /* Local buffers are allocated in the device side work-group
-                 launcher. Let's pass only the sizes of the local args in
-                 the arg buffer. */
-                // TODO: __local__ arg not supported yet,
-                // but can be used on spike (treated as global memory)
-                void* tmp_arg = malloc(al->size);
-                memset(tmp_arg,0,al->size);
-                if(al->value != nullptr)
-                    memcpy(tmp_arg, al->value, al->size);
-                uint64_t aligned_size = (al->size / 4096 + 1)*4096;
-                new_lds_base -= aligned_size;
-                memcpy(&local_arg[i], &new_lds_base, sizeof(uint32_t));
-                POCL_MSG_PRINT_VENTUS("new_lds_base:%08lx\n", new_lds_base);
-                err = vt_copy_to_dev(d->vt_device, new_lds_base, tmp_arg, aligned_size,0,0);
-                if (err != 0) {
-                    abort();
-                }
-                #ifdef PRINT_CHISEL_TESTCODE
-                    // assert(0); // Not support local buffer arg yet.
-                    g_vt_dump_mem.emplace_back(new_lds_base, aligned_size);
-                    g_vt_dump_mem.back().data.assign(al->size, 0);
-                #endif
-              POCL_MSG_WARN("not support local buffer arg yet.\n");
-              args[i] = uint64_t(new_lds_base); // device-side ptr
+              const uint64_t local_arg_size_aligned =
+                  align_up_u64(al->size, kVentusResourceAlignment);
+              uint64_t local_arg_offset = 0;
+              if (add_u64_overflow(lds_stack_total_bytes, lds_static_bytes,
+                                   &local_arg_offset)
+                  || add_u64_overflow(local_arg_offset, dynamic_lds_bytes,
+                                      &local_arg_offset)) {
+                POCL_MSG_ERR("ERROR: LDS local arg offset overflow\n");
+                abort();
+              }
+
+              uint64_t local_arg_addr = 0;
+              if (add_u64_overflow(ventus_local_base, local_arg_offset, &local_arg_addr)
+                  || add_u64_overflow(dynamic_lds_bytes, local_arg_size_aligned,
+                                      &dynamic_lds_bytes)) {
+                POCL_MSG_ERR("ERROR: LDS local arg size overflow\n");
+                abort();
+              }
+
+              POCL_MSG_PRINT_VENTUS(
+                  "local arg %u -> addr=0x%08lx size=%zu aligned=0x%lx (stack_total=0x%lx static=0x%lx dynamic=0x%lx)\n",
+                  i, local_arg_addr, al->size, local_arg_size_aligned,
+                  lds_stack_total_bytes, lds_static_bytes,
+                  dynamic_lds_bytes);
+              args[i] = local_arg_addr;
             }
           else
             {
@@ -677,30 +911,24 @@ step5 make a writefile for chisel
         }
     }
 
-  if (cmd->device->device_alloca_locals)
-    {
-      POCL_MSG_WARN("notice that ventus hasn't support local buffer as argument yet.\n");
-      /* Local buffers are allocated in the device side work-group
-         launcher. Let's pass only the sizes of the local args in
-         the arg buffer. */
-      for (i = 0; i < meta->num_locals; ++i)
-        {
-          size_t s = meta->local_sizes[i]; //TODO: create local_buf at ddr, and map argument to this addr.
-          size_t j = meta->num_args + i;
-        }
-    }
-  else
-    {
-      for (i = 0; i < meta->num_locals; ++i)
-        {
-          size_t s = meta->local_sizes[i];
-          size_t j = meta->num_args + i;
-          // TODO: check this. should alloc on device-side?
-          // arguments[j] = malloc (sizeof (void *));
-          // void *pp = pocl_aligned_malloc (MAX_EXTENDED_ALIGNMENT, s);
-          // *(void **)(arguments[j]) = pp;
-        }
-    }
+  if (meta->num_locals != 0) {
+    size_t compiler_local_bytes = 0;
+    for (i = 0; i < meta->num_locals; ++i)
+      compiler_local_bytes += meta->local_sizes[i];
+    POCL_MSG_PRINT_VENTUS(
+        "kernel %s reports %u automatic locals totaling %zu bytes; resource-backed static LDS size is %lu bytes\n",
+        meta->name, meta->num_locals, compiler_local_bytes, lds_static_bytes);
+  }
+
+  if (add_u64_overflow(lds_stack_total_bytes, lds_static_bytes, &ldssize)
+      || add_u64_overflow(ldssize, dynamic_lds_bytes, &ldssize)) {
+    POCL_MSG_ERR("ERROR: LDS total size overflow\n");
+    abort();
+  }
+  POCL_MSG_PRINT_VENTUS(
+      "LDS layout for %s: stack_per_wf=0x%lx stack_total=0x%lx static=0x%lx dynamic=0x%lx total=0x%lx\n",
+      meta->name, lds_stack_size_per_wf, lds_stack_total_bytes, lds_static_bytes,
+      dynamic_lds_bytes, ldssize);
   kernel_arg_pack_context.reset();
 
   /*pc->printf_buffer = d->printf_buffer;
@@ -821,11 +1049,7 @@ step5 make a writefile for chisel
    * clCreateKernel.c line 79
    ***********************************************************************************************************/
 	uint32_t kernel_entry;
-  char filename[256] = "object";
-  strcat(filename, std::to_string(id).c_str());
-  char binary_filename[256];
-  strcpy(binary_filename, filename);
-  strcat(binary_filename, ".riscv");
+  const char *binary_filename = program_data->binary_filename.c_str();
 #ifdef __linux__
   {
     auto sym = get_symbol_value_from_elf(binary_filename, meta->name, nullptr);
@@ -899,21 +1123,23 @@ step5 make a writefile for chisel
     abort();
   }
 
-  if (max_resident_wg == 0 || pds_src_size == 0) {
-    POCL_MSG_ERR("ERROR: invalid PDS pool size 0 (wf_size=%lu, pdsSize=%lu, num_warp=%lu, num_sm=%lu, wg_slot=%lu)\n",
-                 num_thread, pdssize, num_warp, num_sm, num_wg_slot_per_sm);
+  if (max_resident_wg == 0) {
+    POCL_MSG_ERR("ERROR: invalid max resident workgroup count 0 (num_sm=%lu, wg_slot=%lu)\n",
+                 num_sm, num_wg_slot_per_sm);
     abort();
   }
 
-  uint64_t pds_dev_mem_addr;
+  uint64_t pds_dev_mem_addr = 0;
+  if (pds_src_size > 0) {
     POCL_MSG_PRINT_VENTUS("Preparing private memory of ventus:\n");
-  err = vt_buf_alloc(d->vt_device, pds_src_size, &pds_dev_mem_addr,0,0,0);
-  if (err != 0) {
-    abort();
+    err = vt_buf_alloc(d->vt_device, pds_src_size, &pds_dev_mem_addr,0,0,0);
+    if (err != 0) {
+      abort();
+    }
+    #ifdef PRINT_CHISEL_TESTCODE
+      g_vt_dump_mem.emplace_back(pds_dev_mem_addr, pds_src_size);
+    #endif
   }
-  #ifdef PRINT_CHISEL_TESTCODE
-    g_vt_dump_mem.emplace_back(pds_dev_mem_addr, pds_src_size);
-  #endif
 
 
 
@@ -921,6 +1147,11 @@ step5 make a writefile for chisel
   char *kernel_metadata= (char*)malloc(sizeof(char)*KNL_MAX_METADATA_SIZE);
   memset(kernel_metadata,0,KNL_MAX_METADATA_SIZE);
   memcpy(kernel_metadata+KNL_ENTRY,&kernel_entry,4);
+  if (arg_dev_mem_addr > UINT32_MAX) {
+    POCL_MSG_ERR("ERROR: kernel arg buffer address 0x%lx out of 32-bit range\n",
+                 (unsigned long)arg_dev_mem_addr);
+    abort();
+  }
   uint32_t arg_dev_mem_addr_32=(uint32_t)arg_dev_mem_addr;
   memcpy(kernel_metadata+KNL_ARG_BASE,&arg_dev_mem_addr_32,4);
   memcpy(kernel_metadata+KNL_WORK_DIM,&(pc->work_dim),4);
@@ -936,6 +1167,15 @@ step5 make a writefile for chisel
   memcpy(kernel_metadata+KNL_GL_OFFSET_X,&global_offset_32[0],4);
   memcpy(kernel_metadata+KNL_GL_OFFSET_Y,&global_offset_32[1],4);
   memcpy(kernel_metadata+KNL_GL_OFFSET_Z,&global_offset_32[2],4);
+  if (lds_stack_size_per_wf > UINT32_MAX) {
+    POCL_MSG_ERR("ERROR: ldsStackSizePerWf 0x%lx out of 32-bit range\n",
+                 (unsigned long)lds_stack_size_per_wf);
+    abort();
+  }
+  const uint32_t lds_stack_size_per_wf_32 =
+      static_cast<uint32_t>(lds_stack_size_per_wf);
+  memcpy(kernel_metadata + KNL_LDS_STACK_SIZE_PER_WF,
+         &lds_stack_size_per_wf_32, 4);
 //memcpy(kernel_metadata+KNL_PRINT_ADDR,global_offset_32[0],4);
     POCL_MSG_PRINT_VENTUS("Allocating metadata space:\n");
   auto kernel_metadata_upload_scope = make_pocl_event(d, "kernel_metadata_upload");
@@ -1061,8 +1301,7 @@ step5 make a writefile for chisel
 #ifdef PRINT_CHISEL_TESTCODE
     // rename log file from spike and add index for log
     char sp_logname[256];
-    strcpy(sp_logname, filename);
-    strcat(sp_logname, ".riscv.log");
+    snprintf(sp_logname, sizeof(sp_logname), "%s.log", binary_filename);
     char newName[256]; // 假设文件名不超过 255 个字符
     FILE* logfp = fopen(sp_logname, "r");
     if(logfp) {
@@ -1079,7 +1318,9 @@ step5 make a writefile for chisel
 #endif
 
     err |= vt_one_buf_free(d->vt_device, KNL_MAX_METADATA_SIZE, &knl_dev_mem_addr, 0, 0);
-    err |= vt_one_buf_free(d->vt_device, pds_src_size, &pds_dev_mem_addr, 0, 0);
+    if (pds_src_size > 0) {
+      err |= vt_one_buf_free(d->vt_device, pds_src_size, &pds_dev_mem_addr, 0, 0);
+    }
     if (abuf_size > 0) {
       err |= vt_one_buf_free(d->vt_device, abuf_size, &arg_dev_mem_addr, 0, 0);
     }
@@ -1611,6 +1852,15 @@ int pocl_ventus_build_source (cl_program program, cl_uint device_i,
                                        input_headers, header_include_names, 0);
 }
 
+int pocl_ventus_free_program(cl_device_id device, cl_program program,
+                             unsigned program_device_i) {
+  (void)device;
+  auto *program_data = get_ventus_program_data(program, program_device_i);
+  delete program_data;
+  program->data[program_device_i] = nullptr;
+  return 0;
+}
+
 int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
   std::string clang_path(CLANG);
 	if (!pocl_exists(clang_path.c_str())) {
@@ -1623,38 +1873,25 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
                                           clang_install_path.c_str() );
       return -1;
     }
-	}
-	std::stringstream ss_cmd;
+  }
+  std::stringstream ss_cmd;
 	std::stringstream ss_out;
+  const std::string binary_filename = get_program_binary_filename(program);
+  const std::string object_prefix =
+      binary_filename.substr(0, binary_filename.size() - strlen(".riscv"));
+  const std::string cl_filename = object_prefix + ".cl";
 
-  char program_bc_path[POCL_FILENAME_LENGTH];
   cl_device_id device = program->devices[device_i];
   auto* d = static_cast<vt_device_data_t*>(device->data);
   auto compiler_scope = make_pocl_event(d, "compiler");
   if (compiler_scope && program->kernel_meta != nullptr && program->kernel_meta->name != nullptr) {
     compiler_scope->event().kernel_name = program->kernel_meta->name;
   }
-
-  static uint counter = 0;
-  program_ids.insert(std::pair<uint64_t, uint>(uint64_t(program), counter));
-  counter++;
-
-
-  //pocl_cache_create_program_cachedir(program, device_i, program->source,
-  //                                     strlen(program->source),
-  //                                     program_bc_path);
-  //TODO: move .cl and .riscv file into program_bc_path, and let spike read file from this path.
-  char filename[256] = "object";
-  std::string id = std::to_string(program_ids[uint64_t(program)]);
-  strcat(filename, id.c_str());
-  char cl_filename[256];
-  strcpy(cl_filename, filename);
-  strcat(cl_filename, ".cl");
   std::ofstream outfile(cl_filename);
   outfile << program->source;
   outfile.close();
 
-    ss_cmd << clang_path <<" -cl-std=CL2.0 " << "-target " << device->llvm_target_triplet << " -mcpu=" << device->llvm_cpu  << " " << cl_filename << "  " << " -o " << filename << ".riscv ";
+    ss_cmd << clang_path <<" -cl-std=CL2.0 " << "-target " << device->llvm_target_triplet << " -mcpu=" << device->llvm_cpu  << " " << cl_filename << "  " << " -o " << binary_filename << " ";
 	for(int i = 0; ventus_final_ld_flags[i] != NULL; i++) {
 		ss_cmd << ventus_final_ld_flags[i];
 	}
@@ -1687,11 +1924,23 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
 	int status=pclose(fp);
     if (status == -1) {
         perror("pclose() failed");
-        exit(EXIT_FAILURE);
-    } else {
-        POCL_MSG_PRINT_VENTUS("after calling clang, the output is : \"%s\"\n", ss_out.str().c_str());
+        return -1;
     }
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        POCL_MSG_ERR("Ventus clang failed for '%s' with status %d\n%s\n",
+                     binary_filename.c_str(), status, ss_out.str().c_str());
+        return -1;
+    }
+    POCL_MSG_PRINT_VENTUS("after calling clang, the output is : \"%s\"\n",
+                          ss_out.str().c_str());
 
+    std::string resource_error;
+    if (!cache_ventus_program_resources(program, device_i, binary_filename,
+                                        &resource_error)) {
+        POCL_MSG_ERR("failed to cache Ventus resources from '%s': %s\n",
+                     binary_filename.c_str(), resource_error.c_str());
+        return -1;
+    }
 
     /*const char* env_var = std::getenv("POCL_PRINT_CHISEL_TESTCODE");
     if (env_var != nullptr) {
@@ -1706,6 +1955,6 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
 
 
   pocl_ventus_release_IR(program);
-return 0;
+  return 0;
 
 }

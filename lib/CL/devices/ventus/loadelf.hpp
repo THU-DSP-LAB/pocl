@@ -25,3 +25,8 @@ std::vector<MemBlock> get_data_from_elf(const char *filename, std::shared_ptr<sp
 std::optional<uint64_t> get_symbol_value_from_elf(const char *filename,
                                                   const char *symbol_name,
                                                   std::shared_ptr<spdlog::logger> logger);
+
+// Read the raw payload of an ELF section by name. Returns std::nullopt if not found.
+std::optional<std::vector<uint8_t>> get_section_data_from_elf(
+    const char *filename, const char *section_name, std::shared_ptr<spdlog::logger> logger
+);
