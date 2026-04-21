@@ -23,8 +23,6 @@ extern "C" {
 
 #define POCL_MSG_PRINT_VENTUS(...) POCL_MSG_PRINT_INFO_F(VENTUS, "", __VA_ARGS__)
 
-#define ventus_local_base 0x70000000
-
 GEN_PROTOTYPES (ventus)
 
 typedef void* vt_device_h; ///< 类型定义，指向vt_device类的指针

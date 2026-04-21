@@ -116,7 +116,7 @@ static const char *ventus_objdump_flags[] = {
 
 static std::map<uint64_t, uint> program_ids;
 
-struct VentusKernelResourceV2 final {
+struct VentusKernelResourceV3 final {
   uint32_t version;
   uint32_t flags;
   uint64_t vgpr_used;
@@ -127,8 +127,8 @@ struct VentusKernelResourceV2 final {
   uint64_t pds_stack_peak_bytes;
 };
 
-static_assert(sizeof(VentusKernelResourceV2) == 56,
-              "VentusKernelResourceV2 layout mismatch");
+static_assert(sizeof(VentusKernelResourceV3) == 56,
+              "VentusKernelResourceV3 layout mismatch");
 
 enum VentusKernelResourceFlags : uint32_t {
   kVentusResourceHasDynamicAlloca = 1u << 0,
@@ -350,7 +350,7 @@ static uint64_t align_up_u64(uint64_t value, uint64_t alignment) {
 static constexpr uint64_t kVentusResourceAlignment = 128;
 static constexpr uint64_t kVentusRegisterAlignment = 4;
 static constexpr uint64_t kVentusMinSgprUsage = 32;
-static constexpr uint32_t kVentusKernelResourceVersion = 2;
+static constexpr uint32_t kVentusKernelResourceVersion = 3;
 static constexpr const char *kVentusResourceSectionPrefix = ".ventus.resource.";
 
 static uint get_or_assign_program_id(cl_program program) {
@@ -379,7 +379,7 @@ static VentusProgramData *get_ventus_program_data(cl_program program,
 
 static bool parse_ventus_kernel_resource(const char *binary_filename,
                                          const char *kernel_name,
-                                         VentusKernelResourceV2 *resource,
+                                         VentusKernelResourceV3 *resource,
                                          std::string *error) {
   if (binary_filename == nullptr || kernel_name == nullptr || resource == nullptr) {
     if (error != nullptr) {
@@ -397,7 +397,7 @@ static bool parse_ventus_kernel_resource(const char *binary_filename,
     }
     return false;
   }
-  if (bytes->size() != sizeof(VentusKernelResourceV2)) {
+  if (bytes->size() != sizeof(VentusKernelResourceV3)) {
     if (error != nullptr) {
       *error = "section '" + section_name + "' has unexpected size "
                + std::to_string(bytes->size());
@@ -405,12 +405,12 @@ static bool parse_ventus_kernel_resource(const char *binary_filename,
     return false;
   }
 
-  memcpy(resource, bytes->data(), sizeof(VentusKernelResourceV2));
+  memcpy(resource, bytes->data(), sizeof(VentusKernelResourceV3));
   return true;
 }
 
 static bool normalize_ventus_kernel_resources(
-    const VentusKernelResourceV2 &resource, VentusKernelLaunchResources *normalized,
+    const VentusKernelResourceV3 &resource, VentusKernelLaunchResources *normalized,
     std::string *error
 ) {
   if (normalized == nullptr) {
@@ -515,7 +515,7 @@ static bool cache_ventus_program_resources(cl_program program,
       return false;
     }
 
-    VentusKernelResourceV2 raw_resource{};
+    VentusKernelResourceV3 raw_resource{};
     if (!parse_ventus_kernel_resource(binary_filename.c_str(), kernel_name,
                                       &raw_resource, error)) {
       delete program_data;
@@ -855,8 +855,7 @@ step5 make a writefile for chisel
                 abort();
               }
 
-              uint64_t local_arg_addr = 0;
-              if (add_u64_overflow(ventus_local_base, local_arg_offset, &local_arg_addr)
+              if (local_arg_offset > UINT32_MAX
                   || add_u64_overflow(dynamic_lds_bytes, local_arg_size_aligned,
                                       &dynamic_lds_bytes)) {
                 POCL_MSG_ERR("ERROR: LDS local arg size overflow\n");
@@ -864,11 +863,11 @@ step5 make a writefile for chisel
               }
 
               POCL_MSG_PRINT_VENTUS(
-                  "local arg %u -> addr=0x%08lx size=%zu aligned=0x%lx (stack_total=0x%lx static=0x%lx dynamic=0x%lx)\n",
-                  i, local_arg_addr, al->size, local_arg_size_aligned,
+                  "local arg %u -> offset=0x%08lx size=%zu aligned=0x%lx (stack_total=0x%lx static=0x%lx dynamic=0x%lx)\n",
+                  i, local_arg_offset, al->size, local_arg_size_aligned,
                   lds_stack_total_bytes, lds_static_bytes,
                   dynamic_lds_bytes);
-              args[i] = local_arg_addr;
+              args[i] = local_arg_offset;
             }
           else
             {
