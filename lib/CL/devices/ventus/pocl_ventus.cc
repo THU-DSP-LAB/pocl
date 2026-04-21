@@ -312,8 +312,8 @@ pocl_ventus_init (unsigned j, cl_device_id dev, const char* parameters)
   dev->device_alloca_locals = 1; //
 
   // Doesn't support partition
-  dev->max_sub_devices = 1;
-  dev->num_partition_properties = 1;
+  dev->max_sub_devices = 0;
+  dev->num_partition_properties = 0;
   dev->num_partition_types = 0;
   dev->partition_type = NULL;
 
