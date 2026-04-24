@@ -1208,7 +1208,7 @@ step5 make a writefile for chisel
 
   pdsbase=pds_dev_mem_addr;
   knlbase=knl_dev_mem_addr;
-  vt_kernel_metadata_t driver_meta;
+  vt_kernel_metadata_t driver_meta{};
     driver_meta.kernel_id=0;
     driver_meta.kernel_size[0]=num_workgroups[0];
     driver_meta.kernel_size[1]=num_workgroups[1];
