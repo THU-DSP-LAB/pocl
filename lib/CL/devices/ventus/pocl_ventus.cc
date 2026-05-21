@@ -100,7 +100,7 @@ static const char *ventus_final_ld_flags[] = {
 static const char *ventus_other_compile_flags[] = {
   "-I",
   VENTUS_INSTALL_PREFIX_DIR,
-  "include/clc ",
+  "/include/clc ",
   "-O1 ",
   "-Wl,-T,",
   VENTUS_INSTALL_PREFIX_DIR,
@@ -847,9 +847,7 @@ step5 make a writefile for chisel
               const uint64_t local_arg_size_aligned =
                   align_up_u64(al->size, kVentusResourceAlignment);
               uint64_t local_arg_offset = 0;
-              if (add_u64_overflow(lds_stack_total_bytes, lds_static_bytes,
-                                   &local_arg_offset)
-                  || add_u64_overflow(local_arg_offset, dynamic_lds_bytes,
+              if (add_u64_overflow(lds_static_bytes, dynamic_lds_bytes,
                                       &local_arg_offset)) {
                 POCL_MSG_ERR("ERROR: LDS local arg offset overflow\n");
                 abort();
@@ -863,10 +861,9 @@ step5 make a writefile for chisel
               }
 
               POCL_MSG_PRINT_VENTUS(
-                  "local arg %u -> offset=0x%08lx size=%zu aligned=0x%lx (stack_total=0x%lx static=0x%lx dynamic=0x%lx)\n",
+                  "local arg %u -> offset=0x%08lx size=%zu aligned=0x%lx (static=0x%lx dynamic=0x%lx)\n",
                   i, local_arg_offset, al->size, local_arg_size_aligned,
-                  lds_stack_total_bytes, lds_static_bytes,
-                  dynamic_lds_bytes);
+                  lds_static_bytes, dynamic_lds_bytes);
               args[i] = local_arg_offset;
             }
           else
@@ -919,15 +916,18 @@ step5 make a writefile for chisel
         meta->name, meta->num_locals, compiler_local_bytes, lds_static_bytes);
   }
 
-  if (add_u64_overflow(lds_stack_total_bytes, lds_static_bytes, &ldssize)
-      || add_u64_overflow(ldssize, dynamic_lds_bytes, &ldssize)) {
+  uint64_t lds_non_stack_bytes = 0;
+  if (add_u64_overflow(lds_static_bytes, dynamic_lds_bytes,
+                       &lds_non_stack_bytes)
+      || add_u64_overflow(lds_non_stack_bytes, lds_stack_total_bytes,
+                          &ldssize)) {
     POCL_MSG_ERR("ERROR: LDS total size overflow\n");
     abort();
   }
   POCL_MSG_PRINT_VENTUS(
-      "LDS layout for %s: stack_per_wf=0x%lx stack_total=0x%lx static=0x%lx dynamic=0x%lx total=0x%lx\n",
-      meta->name, lds_stack_size_per_wf, lds_stack_total_bytes, lds_static_bytes,
-      dynamic_lds_bytes, ldssize);
+      "LDS layout for %s: static=0x%lx dynamic=0x%lx non_stack=0x%lx stack_per_wf=0x%lx stack_total=0x%lx total=0x%lx\n",
+      meta->name, lds_static_bytes, dynamic_lds_bytes, lds_non_stack_bytes,
+      lds_stack_size_per_wf, lds_stack_total_bytes, ldssize);
   kernel_arg_pack_context.reset();
 
   /*pc->printf_buffer = d->printf_buffer;
@@ -1175,6 +1175,15 @@ step5 make a writefile for chisel
       static_cast<uint32_t>(lds_stack_size_per_wf);
   memcpy(kernel_metadata + KNL_LDS_STACK_SIZE_PER_WF,
          &lds_stack_size_per_wf_32, 4);
+  if (lds_non_stack_bytes > UINT32_MAX) {
+    POCL_MSG_ERR("ERROR: ldsNonStackBytes 0x%lx out of 32-bit range\n",
+                 (unsigned long)lds_non_stack_bytes);
+    abort();
+  }
+  const uint32_t lds_non_stack_bytes_32 =
+      static_cast<uint32_t>(lds_non_stack_bytes);
+  memcpy(kernel_metadata + KNL_LDS_NON_STACK_SIZE,
+         &lds_non_stack_bytes_32, 4);
 //memcpy(kernel_metadata+KNL_PRINT_ADDR,global_offset_32[0],4);
     POCL_MSG_PRINT_VENTUS("Allocating metadata space:\n");
   auto kernel_metadata_upload_scope = make_pocl_event(d, "kernel_metadata_upload");
@@ -1861,20 +1870,25 @@ int pocl_ventus_free_program(cl_device_id device, cl_program program,
 }
 
 int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
-  std::string clang_path(CLANG);
-	if (!pocl_exists(clang_path.c_str())) {
-    // Using VENTUS_INSTALL_PREFIX environment to get other clang_path
-    std::string ventus_install_prefix(VENTUS_INSTALL_PREFIX_DIR);
-    std::string clang_install_path = ventus_install_prefix + "/bin/clang";
-    clang_path = clang_install_path;
-    if(!pocl_exists(clang_install_path .c_str())) {
-      POCL_MSG_ERR("$CLANG: '%s' or '%s' doesn't exist\n", clang_path.c_str(),
-                                          clang_install_path.c_str() );
+  const char *ventus_install_prefix = VENTUS_INSTALL_PREFIX_DIR;
+  std::string clang_path;
+  if (ventus_install_prefix != nullptr && ventus_install_prefix[0] != '\0') {
+    clang_path = std::string(ventus_install_prefix) + "/bin/clang";
+    if (!pocl_exists(clang_path.c_str())) {
+      POCL_MSG_ERR("VENTUS_INSTALL_PREFIX clang '%s' doesn't exist\n",
+                   clang_path.c_str());
+      return -1;
+    }
+  } else {
+    clang_path = CLANG;
+    if (!pocl_exists(clang_path.c_str())) {
+      POCL_MSG_ERR("$CLANG: '%s' doesn't exist and VENTUS_INSTALL_PREFIX is not set\n",
+                   clang_path.c_str());
       return -1;
     }
   }
   std::stringstream ss_cmd;
-	std::stringstream ss_out;
+  std::stringstream ss_out;
   const std::string binary_filename = get_program_binary_filename(program);
   const std::string object_prefix =
       binary_filename.substr(0, binary_filename.size() - strlen(".riscv"));
