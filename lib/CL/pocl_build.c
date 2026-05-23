@@ -921,7 +921,16 @@ compile_and_link_program(int compile_program,
       cl_device_id device = program->devices[device_i];
 
       if (device->ops->post_build_program)
-        device->ops->post_build_program (program, device_i);
+        {
+          error = device->ops->post_build_program (program, device_i);
+          if (error != CL_SUCCESS)
+            {
+              APPEND_TO_BUILD_LOG_GOTO (
+                  build_error_code,
+                  "Device %s failed post build processing\n",
+                  device->long_name);
+            }
+        }
     }
 
   TP_BUILD_PROGRAM (program->context->id, program->id);

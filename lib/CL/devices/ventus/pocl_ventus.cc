@@ -221,6 +221,15 @@ private:
   bool active_;
 };
 
+class VentusProgramIRReleaseGuard final {
+public:
+  explicit VentusProgramIRReleaseGuard(cl_program program) : program_(program) {}
+  ~VentusProgramIRReleaseGuard() { pocl_ventus_release_IR(program_); }
+
+private:
+  cl_program program_;
+};
+
 void
 pocl_ventus_init_device_ops(struct pocl_device_ops *ops)
 {
@@ -1870,6 +1879,12 @@ int pocl_ventus_free_program(cl_device_id device, cl_program program,
 }
 
 int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
+  VentusProgramIRReleaseGuard release_ir(program);
+
+  if (program->binary_type != CL_PROGRAM_BINARY_TYPE_EXECUTABLE) {
+    return CL_SUCCESS;
+  }
+
   const char *ventus_install_prefix = VENTUS_INSTALL_PREFIX_DIR;
   std::string clang_path;
   if (ventus_install_prefix != nullptr && ventus_install_prefix[0] != '\0') {
@@ -1966,8 +1981,6 @@ int pocl_ventus_post_build_program (cl_program program, cl_uint device_i) {
         }
     } */
 
-
-  pocl_ventus_release_IR(program);
   return 0;
 
 }
