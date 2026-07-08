@@ -2318,7 +2318,7 @@ if(ENABLE_CUDA)
   # disable this when using PoCL with CUDA device with Compute Capability < 6.0
   option(ENABLE_CUDA_FP16 "cuda fp16" ON)
 
-  if(ENABLE_CUDA_FP16)
+  if(ENABLE_CUDA_FP16 AND NOT ENABLE_CONFORMANCE)
     set(CUDA_DEVICE_EXTENSIONS "${CUDA_DEVICE_EXTENSIONS} cl_khr_fp16")
     set(CUDA_DEVICE_FEATURES_30 "${CUDA_DEVICE_FEATURES_30} __opencl_c_fp16")
   endif()

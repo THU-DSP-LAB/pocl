@@ -560,6 +560,16 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
 
   /* TODO: Get images working */
   dev->image_support = CL_FALSE;
+  dev->max_read_image_args = 0;
+  dev->max_write_image_args = 0;
+  dev->max_read_write_image_args = 0;
+  dev->num_image_formats[0] = 0;
+  dev->num_image_formats[1] = 0;
+  dev->num_image_formats[2] = 0;
+  dev->num_image_formats[3] = 0;
+  dev->num_image_formats[4] = 0;
+  dev->num_image_formats[5] = 0;
+  dev->version_of_latest_passed_cts = "v2026-03-25-00";
 
   dev->autolocals_to_args
       = POCL_AUTOLOCALS_TO_ARGS_ONLY_IF_DYNAMIC_LOCALS_PRESENT;
@@ -665,14 +675,22 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
   dev->preferred_vector_width_long = 1;
   dev->preferred_vector_width_float = 1;
   dev->preferred_vector_width_double = 1;
-  dev->preferred_vector_width_half = 0;
   dev->native_vector_width_char = 1;
   dev->native_vector_width_short = 1;
   dev->native_vector_width_int = 1;
   dev->native_vector_width_long = 1;
   dev->native_vector_width_float = 1;
   dev->native_vector_width_double = 1;
-  dev->native_vector_width_half = 0;
+  if (strstr (CUDA_DEVICE_EXTENSIONS, "cl_khr_fp16") != NULL)
+    {
+      dev->preferred_vector_width_half = 1;
+      dev->native_vector_width_half = 1;
+    }
+  else
+    {
+      dev->preferred_vector_width_half = 0;
+      dev->native_vector_width_half = 0;
+    }
 
   dev->single_fp_config = CL_FP_ROUND_TO_NEAREST | CL_FP_ROUND_TO_ZERO
                           | CL_FP_ROUND_TO_INF | CL_FP_FMA | CL_FP_INF_NAN
@@ -807,10 +825,10 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
 
   dev->max_num_sub_groups = dev->max_work_group_size / data->warp_size;
 
-  // All devices starting from Compute Capability 2.0 have this limit;
-  // See e.g.
-  // https://forums.developer.nvidia.com/t/max-size-of-cuda-arguments/50218
-  dev->max_parameter_size = 4352;
+  // CUDA kernels have a 4352-byte parameter area on CC >= 2.0 devices, but
+  // PoCL appends four implicit uint32 launch parameters: work_dim and the
+  // three global offsets.
+  dev->max_parameter_size = 4352 - 4 * sizeof (cl_uint);
 
 #if (CUDA_DEVICE_CL_VERSION_MAJOR >= 3)
   dev->features = CUDA_DEVICE_FEATURES_30;

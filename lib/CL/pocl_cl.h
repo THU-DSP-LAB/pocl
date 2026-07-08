@@ -305,7 +305,7 @@ extern pocl_obj_id_t last_object_id;
 #  define POCL_ALIAS_OPENCL_SYMBOL(name)                                \
   __typeof__(name) name __attribute__((alias ("PO" #name), visibility("default")));
 
-#if !defined(BUILD_ICD) && !defined(RENAME_POCL)
+#if !defined(RENAME_POCL)
 #    define POsym(name) POCL_ALIAS_OPENCL_SYMBOL(name)
 #  else
 #    define POsym(name)
@@ -355,7 +355,7 @@ clIcdSetPlatformDispatchDataKHR (cl_platform_id platform, void *dispatch_data);
 #ifdef BUILD_ICD
 #  define POCL_ICD_OBJECT struct _cl_icd_dispatch *dispatch; void *disp_data;
 #  define POCL_ICD_OBJECT_PLATFORM_ID POCL_ICD_OBJECT
-#  define POsymICD(name) POsym(name)
+#  define POsymICD(name) POsymAlways(name)
 #  define POdeclsymICD(name) POdeclsym(name)
 #else
 #  define POCL_ICD_OBJECT

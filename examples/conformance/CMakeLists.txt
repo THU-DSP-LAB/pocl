@@ -97,6 +97,45 @@ else()
   message(WARNING "SPIRV disabled/not found, or spirv-tools not found - disabling SPIRV tests in CTS")
 endif()
 
+set(CTS_SPIRV_INCLUDE_DIR "" CACHE PATH
+  "Path to SPIRV-Headers root used when building OpenCL-CTS")
+
+if(NOT CTS_SPIRV_INCLUDE_DIR)
+  find_file(CTS_SPIRV_GRAMMAR_FILE
+    NAMES spirv.core.grammar.json
+    PATHS
+      /usr
+      /usr/local
+      /opt/SPIRV-Headers
+    PATH_SUFFIXES
+      include/spirv/unified1)
+
+  if(CTS_SPIRV_GRAMMAR_FILE)
+    get_filename_component(CTS_SPIRV_INCLUDE_DIR
+      "${CTS_SPIRV_GRAMMAR_FILE}/../../../.." ABSOLUTE)
+  endif()
+endif()
+
+if(NOT CTS_SPIRV_INCLUDE_DIR)
+  message(FATAL_ERROR
+    "OpenCL-CTS requires SPIRV-Headers. "
+    "Set -DCTS_SPIRV_INCLUDE_DIR=<path to SPIRV-Headers root>.")
+endif()
+
+set(CTS_SPIRV_TOOLS_ARG "")
+if(SPIRV_AS AND SPIRV_VAL)
+  get_filename_component(CTS_SPIRV_TOOLS_DIR "${SPIRV_AS}" DIRECTORY)
+  if(EXISTS "${CTS_SPIRV_TOOLS_DIR}/spirv-val")
+    set(CTS_SPIRV_TOOLS_ARG "-DSPIRV_TOOLS_DIR=${CTS_SPIRV_TOOLS_DIR}")
+  endif()
+endif()
+
+if(NOT CTS_SPIRV_TOOLS_ARG)
+  message(WARNING
+    "spirv-as/spirv-val not found. "
+    "Some OpenCL-CTS targets, such as compiler, may fail to build.")
+endif()
+
 ExternalProject_Add(
   ${TS_NAME}
   PREFIX "${TS_BASEDIR}"
@@ -108,7 +147,8 @@ ExternalProject_Add(
     -DD3D10_IS_SUPPORTED=0 -DD3D11_IS_SUPPORTED=0
     -DGL_IS_SUPPORTED=0 -DGLES_IS_SUPPORTED=0
     -DCL_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
-    -DSPIRV_INCLUDE_DIR=/usr
+    -DSPIRV_INCLUDE_DIR=${CTS_SPIRV_INCLUDE_DIR}
+    ${CTS_SPIRV_TOOLS_ARG}
     ${CTS_OPENCL_LIBDIR}
     ${CTS_OPENCL_LIBRARY}
     -DENABLE_ASAN=${ENABLE_ASAN}

@@ -23,6 +23,20 @@
 
 #include "pocl_cl.h"
 
+static int
+program_has_il_capable_device (const cl_program program)
+{
+  for (cl_uint i = 0; i < program->associated_num_devices; ++i)
+    {
+      cl_device_id dev = program->associated_devices[i];
+      if ((dev->supported_spir_v_versions != NULL)
+          && (dev->supported_spir_v_versions[0] != '\0'))
+        return 1;
+    }
+
+  return 0;
+}
+
 CL_API_ENTRY cl_int CL_API_CALL
 POname(clSetProgramSpecializationConstant)
                                   (cl_program  program,
@@ -38,6 +52,10 @@ POname(clSetProgramSpecializationConstant)
   POCL_RETURN_ERROR_COND ((!IS_CL_OBJECT_VALID (program)), CL_INVALID_PROGRAM);
 
   assert (program->num_devices != 0);
+
+  POCL_RETURN_ERROR_ON ((!program_has_il_capable_device (program)),
+                        CL_INVALID_OPERATION,
+                        "No device associated with the program supports IL\n");
 
   POCL_RETURN_ERROR_ON (
       (program->program_il == NULL || program->program_il_size == 0),
