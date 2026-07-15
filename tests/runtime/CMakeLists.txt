@@ -44,6 +44,9 @@ set(C_PROGRAMS_TO_BUILD test_clFinish test_clGetDeviceInfo test_clGetEventInfo
   test_event_double_wait test_event_failed_dependency test_buffer_migration
   test_buffer_ping_pong
   test_enqueue_kernel_from_binary test_user_event test_fill-buffer
+  test_kernel_call_kernel
+  test_use_host_ptr_rect
+  test_exit_with_live_queue
   test_clSetMemObjectDestructorCallback test_dbk_jpeg
   test_cl_pocl_content_size test_cl_pocl_content_size_migration
   test_deviceside_enqueue test_command_buffer test_command_buffer_images
@@ -107,6 +110,18 @@ add_test_pocl(NAME "runtime/test_link_error" COMMAND "test_link_error" WORKITEM_
 add_test_pocl(NAME "runtime/test_read-copy-write-buffer" COMMAND "test_read-copy-write-buffer" WORKITEM_HANDLER "loopvec")
 
 add_test_pocl(NAME "runtime/test_fill-buffer" COMMAND "test_fill-buffer" WORKITEM_HANDLER "loopvec")
+
+add_test_pocl(NAME "runtime/test_kernel_call_kernel"
+              COMMAND "test_kernel_call_kernel"
+              WORKITEM_HANDLER "loopvec")
+
+add_test_pocl(NAME "runtime/test_use_host_ptr_rect"
+              COMMAND "test_use_host_ptr_rect"
+              WORKITEM_HANDLER "loopvec")
+
+add_test_pocl(NAME "runtime/test_exit_with_live_queue"
+              COMMAND "test_exit_with_live_queue"
+              WORKITEM_HANDLER "loopvec")
 
 add_test(NAME "runtime/test_buffer-image-copy" COMMAND "test_buffer-image-copy")
 
@@ -470,6 +485,9 @@ set_property(TEST
   "runtime/clFinish"
   "runtime/test_read-copy-write-buffer"
   "runtime/test_fill-buffer"
+  "runtime/test_kernel_call_kernel"
+  "runtime/test_use_host_ptr_rect"
+  "runtime/test_exit_with_live_queue"
   "runtime/test_buffer-image-copy"
   "runtime/clSetEventCallback"
   "runtime/clGetSupportedImageFormats"

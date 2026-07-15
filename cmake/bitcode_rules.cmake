@@ -25,6 +25,10 @@
 
 # cmake version of lib/kernel/rules.mk
 
+if(POLICY CMP0116)
+  cmake_policy(SET CMP0116 NEW)
+endif()
+
 separate_arguments(KERNEL_C_FLAGS)
 separate_arguments(KERNEL_CL_FLAGS)
 separate_arguments(KERNEL_CXX_FLAGS)
@@ -74,6 +78,7 @@ function(compile_cl_to_bc FILENAME SUBDIR BC_FILE_LIST EXTRA_CONFIG)
     get_filename_component(FNAME "${FILENAME}" NAME)
     get_filename_component(FNAME_WE "${FILENAME}" NAME_WE)
     set(BC_FILE "${CMAKE_CURRENT_BINARY_DIR}/${SUBDIR}/${FNAME}.bc")
+    set(DEP_FILE "${BC_FILE}.d")
     set(${BC_FILE_LIST} ${${BC_FILE_LIST}} ${BC_FILE} PARENT_SCOPE)
     if(IS_ABSOLUTE "${FILENAME}")
       set(FULL_F_PATH "${FILENAME}")
@@ -122,8 +127,10 @@ function(compile_cl_to_bc FILENAME SUBDIR BC_FILE_LIST EXTRA_CONFIG)
           ${DEPENDLIST}
         COMMAND "${HOST_CLANG}" ${CLANG_FLAGS}
         ${KERNEL_CL_FLAGS} ${DEVICE_CL_FLAGS}
+        "-MD" "-MF" "${DEP_FILE}"
         "-o" "${BC_FILE}" "-O0" "-c" "${FULL_F_PATH}"
         ${INCLUDELIST}
+        DEPFILE "${DEP_FILE}"
         COMMENT "Building CL to LLVM bitcode ${BC_FILE}"
         VERBATIM)
 endfunction()

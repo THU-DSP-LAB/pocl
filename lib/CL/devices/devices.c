@@ -248,6 +248,16 @@ static unsigned devices_active = 0;
 
 extern pocl_lock_t pocl_init_lock;
 
+static cl_int
+register_async_callback_exit_handler (void)
+{
+  if (atexit (pocl_async_callback_finish) == 0)
+    return CL_SUCCESS;
+
+  POCL_MSG_ERR ("Failed to register asynchronous callback exit handler\n");
+  return CL_OUT_OF_RESOURCES;
+}
+
 #ifdef ENABLE_LOADABLE_DRIVERS
 
 static void *pocl_device_handles[POCL_NUM_DEVICE_TYPES];
@@ -455,6 +465,8 @@ pocl_uninit_devices ()
         }
     }
 
+  retval = register_async_callback_exit_handler ();
+
 FINISH:
 #ifdef ENABLE_SIGFPE_HANDLER
   pocl_destroy_sigfpe_handler ();
@@ -562,6 +574,10 @@ add_discovered_device_callback (const char *dev_parameters,
   POCL_GOTO_ERROR_ON ((errcode != CL_SUCCESS), errcode,
                       "Device %i / %s initialization failed! \n",
                       pocl_dev_type_idx, dev_name);
+  errcode = register_async_callback_exit_handler ();
+  POCL_GOTO_ERROR_ON ((errcode != CL_SUCCESS), errcode,
+                      "Could not register callback cleanup after device "
+                      "initialization\n");
 
   LL_APPEND_ATOMIC (pocl_devices, dev);
   POCL_ATOMIC_INC (device_count[pocl_dev_type_idx]);
@@ -824,6 +840,10 @@ pocl_init_devices (cl_platform_id platform)
     }
   first_init_done = 1;
   devices_active = 1;
+  errcode = register_async_callback_exit_handler ();
+  POCL_GOTO_ERROR_ON ((errcode != CL_SUCCESS), errcode,
+                      "Could not register callback cleanup after device "
+                      "initialization\n");
   errcode = pocl_init_device_discovery (platform);
 ERROR:
   init_in_progress = 0;

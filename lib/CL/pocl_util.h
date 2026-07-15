@@ -224,11 +224,13 @@ int pocl_device_supports_builtin_kernel (cl_device_id dev,
                                          const char *kernel_name);
 
 void pocl_async_callback_init ();
+int pocl_async_callback_wait ();
 void pocl_async_callback_finish ();
 
 void pocl_event_cb_push (cl_event event, int status);
 void pocl_mem_cb_push (cl_mem mem);
 void pocl_context_cb_push (cl_context ctx);
+void pocl_release_mem_device_resources (cl_mem mem);
 
 #define POCL_CHECK_DEV_IN_CMDQ                                                \
   do                                                                          \

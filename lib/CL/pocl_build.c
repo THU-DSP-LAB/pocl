@@ -953,7 +953,9 @@ compile_and_link_program(int compile_program,
       setup_device_kernel_hashes (program);
     }
 
-  if (link_program)
+  if (link_program
+      && (program->binary_type == CL_PROGRAM_BINARY_TYPE_EXECUTABLE
+          || program->binary_type == CL_PROGRAM_BINARY_TYPE_NONE))
     {
       for (device_i = 0; device_i < program->num_devices; device_i++)
         {

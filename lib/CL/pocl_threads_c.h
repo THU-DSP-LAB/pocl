@@ -170,6 +170,7 @@ size_t pocl_get_thread_stack_size ();
   PTHREAD_CHECK (pthread_create (&thr, NULL, func, arg))
 #define POCL_JOIN_THREAD(thr) PTHREAD_CHECK (pthread_join (thr, NULL))
 #define POCL_THREAD_SELF() pthread_self ()
+#define POCL_THREAD_EQUAL(left, right) pthread_equal (left, right)
 
 #define POCL_INIT_BARRIER(bar, number)                                        \
   PTHREAD_CHECK (pthread_barrier_init (&bar, NULL, number))

@@ -7,6 +7,22 @@
 #define MAX_PLATFORMS 32
 #define MAX_DEVICES   32
 
+static int
+check_fp16_query_consistency (cl_device_id device)
+{
+  char extensions[4096];
+  cl_ulong half_config = ~(cl_ulong)0;
+  cl_int err = clGetDeviceInfo (device, CL_DEVICE_EXTENSIONS,
+                                sizeof (extensions), extensions, NULL);
+  CHECK_OPENCL_ERROR_IN ("clGetDeviceInfo(CL_DEVICE_EXTENSIONS)");
+  err = clGetDeviceInfo (device, CL_DEVICE_HALF_FP_CONFIG,
+                         sizeof (half_config), &half_config, NULL);
+  CHECK_OPENCL_ERROR_IN ("clGetDeviceInfo(CL_DEVICE_HALF_FP_CONFIG)");
+  if (strstr (extensions, "cl_khr_fp16") == NULL)
+    TEST_ASSERT (half_config == 0);
+  return CL_SUCCESS;
+}
+
 int
 main(void)
 {
@@ -31,6 +47,8 @@ main(void)
     for (j = 0; j < ndevices; j++)
     {
       cl_long global_memsize, max_mem_alloc_size, min_max_mem_alloc_size;
+
+      TEST_ASSERT (check_fp16_query_consistency (devices[j]) == CL_SUCCESS);
 
       err = clGetDeviceInfo(devices[j], CL_DEVICE_GLOBAL_MEM_SIZE,
                             sizeof(global_memsize), &global_memsize, NULL);

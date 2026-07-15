@@ -28,7 +28,11 @@ include("bitcode_rules")
 set(KERNEL_SOURCES ${SOURCES_GENERIC})
 
 list(REMOVE_ITEM KERNEL_SOURCES printf_base.c)
-list(APPEND KERNEL_SOURCES svm_atomics.cl svm_atomics_host.cl)
+list(APPEND KERNEL_SOURCES
+  half_cos.cl half_divide.cl half_exp.cl half_exp2.cl half_exp10.cl
+  half_log.cl half_log2.cl half_log10.cl half_powr.cl half_recip.cl
+  half_sin.cl half_sqrt.cl half_tan.cl
+  svm_atomics.cl svm_atomics_host.cl)
 
 foreach(FILE
   async_work_group_copy.cl async_work_group_strided_copy.cl
@@ -38,6 +42,9 @@ foreach(FILE
   native_cos.cl native_sin.cl native_tan.cl
   native_log.cl native_log2.cl native_log10.cl
   native_exp.cl native_exp10.cl
+  cbrt.cl cospi.cl erfc.cl exp10.cl fmod.cl fract.cl frexp.cl hypot.cl ilogb.cl
+  lgamma.cl lgamma_r.cl logb.cl pow.cl pown.cl powr.cl remquo.cl rootn.cl
+  sinpi.cl tanpi.cl
   native_powr.cl
   native_divide.cl native_recip.cl
   rsqrt.cl

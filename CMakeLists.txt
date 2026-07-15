@@ -2283,45 +2283,10 @@ if(ENABLE_CUDA)
   # NOTE: update README.md when changing the list
   set(CUDA_DEVICE_EXTENSIONS "cl_khr_byte_addressable_store cl_khr_global_int32_base_atomics \
     cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics \
-    cl_khr_local_int32_extended_atomics cl_khr_int64_base_atomics \
-    cl_khr_int64_extended_atomics cl_nv_device_attribute_query")
+    cl_khr_local_int32_extended_atomics cl_nv_device_attribute_query")
 
-  # CUDA device: list of OpenCL 3.0 features that are always enabled
-  set(CUDA_DEVICE_FEATURES_30 "__opencl_c_atomic_order_acq_rel __opencl_c_atomic_order_seq_cst \
-    __opencl_c_atomic_scope_device __opencl_c_program_scope_global_variables \
-    __opencl_c_generic_address_space")
-
-  set(CUDA_DEVICE_EXTENSIONS "${CUDA_DEVICE_EXTENSIONS} cl_ext_float_atomics")
-  set(CUDA_DEVICE_FEATURES_30 "${CUDA_DEVICE_FEATURES_30} \
-     __opencl_c_ext_fp32_global_atomic_add __opencl_c_ext_fp32_local_atomic_add \
-     __opencl_c_ext_fp32_global_atomic_min_max __opencl_c_ext_fp32_local_atomic_min_max \
-     __opencl_c_ext_fp64_global_atomic_add __opencl_c_ext_fp64_local_atomic_add \
-     __opencl_c_ext_fp64_global_atomic_min_max __opencl_c_ext_fp64_local_atomic_min_max")
-
-  if(ENABLE_SPIRV)
-    set(CUDA_DEVICE_EXTENSIONS "${CUDA_DEVICE_EXTENSIONS} cl_khr_il_program cl_khr_spirv_queries")
-  endif()
-
-  option(ENABLE_CUDA_EXPERIMENTAL_EXTENSIONS "experimental (and/or unfinished) device extensions" OFF)
-  if(ENABLE_CUDA_EXPERIMENTAL_EXTENSIONS)
-    # unfinished extensions
-    set(CUDA_DEVICE_EXTENSIONS "${CUDA_DEVICE_EXTENSIONS} cl_khr_subgroups")
-    #set(CUDA_DEVICE_EXTENSIONS "${CUDA_DEVICE_EXTENSIONS} cl_khr_subgroup_ballot \
-    #  cl_khr_subgroup_shuffle cl_intel_subgroups cl_intel_required_subgroup_size")
-  endif()
-
-  if(CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_subgroup")
-    set(CUDA_DEVICE_FEATURES_30 "${CUDA_DEVICE_FEATURES_30} __opencl_c_subgroups")
-  endif()
-
-  # advertise fp16 support in CUDA device info
-  # disable this when using PoCL with CUDA device with Compute Capability < 6.0
-  option(ENABLE_CUDA_FP16 "cuda fp16" ON)
-
-  if(ENABLE_CUDA_FP16 AND NOT ENABLE_CONFORMANCE)
-    set(CUDA_DEVICE_EXTENSIONS "${CUDA_DEVICE_EXTENSIONS} cl_khr_fp16")
-    set(CUDA_DEVICE_FEATURES_30 "${CUDA_DEVICE_FEATURES_30} __opencl_c_fp16")
-  endif()
+  # CUDA device: OpenCL 3.0 optional features verified by the CUDA CTS baseline.
+  set(CUDA_DEVICE_FEATURES_30 "__opencl_c_int64")
 
   # FP64 is always enabled for CUDA, it should be available since Compute Capability 1.3
   set(CUDA_DEVICE_EXTENSIONS "${CUDA_DEVICE_EXTENSIONS} cl_khr_fp64")

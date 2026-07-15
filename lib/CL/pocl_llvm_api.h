@@ -62,7 +62,7 @@
  * This class is a replacement that uses a simple pthread lock
  */
 
-class PoclCompilerMutexGuard {
+class POCL_EXPORT PoclCompilerMutexGuard {
   PoclCompilerMutexGuard(const PoclCompilerMutexGuard &) = delete;
   void operator=(const PoclCompilerMutexGuard &) = delete;
   pocl_lock_t *lock;

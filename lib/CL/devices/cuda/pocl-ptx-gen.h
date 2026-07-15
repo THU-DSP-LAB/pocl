@@ -27,8 +27,7 @@
 #include "config.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 #ifndef PATH_MAX
@@ -41,22 +40,35 @@ int findLibDevice(char LibDevicePath[PATH_MAX], const char *Arch);
 
 /* Generate a PTX file from an LLVM bitcode file. */
 /* Returns zero on success, non-zero on failure. */
-int pocl_ptx_gen (void *Device, void *Program, void *llvm_module, const char *PTXFilename, const char *Arch,
-                  unsigned PtxVersion, const char *LibDevicePath,
-                  int HasOffsets, void **AlignmentMapPtr);
+typedef struct {
+  void *device;
+  void *program;
+  void *llvm_module;
+  const char *ptx_filename;
+  unsigned ptx_version;
+  const char *libdevice_path;
+  void **alignment_map;
+} pocl_ptx_gen_options_t;
 
-int pocl_cuda_create_alignments (void *llvm_module, void **AlignmentMapPtr);
+int pocl_ptx_gen(const pocl_ptx_gen_options_t *options);
 
-void pocl_cuda_destroy_alignments (void *llvm_module, void *AlignmentMapPtr);
+int pocl_cuda_create_alignments(void *llvm_module, void *program,
+                                void **AlignmentMapPtr);
 
-/* Populate the Alignments array with the required pointer alignments for */
-/* each kernel argument. */
-/* Returns zero on success, non-zero on failure. */
-int pocl_cuda_get_ptr_arg_alignment (void *LLVM_IR, const char *KernelName,
-                                     size_t *Alignments,
-                                     void *AlignmentMapPtr);
+void pocl_cuda_destroy_alignments(void *llvm_module, void *AlignmentMapPtr);
 
-int pocl_cuda_define_sub_group_size (void *llvm_module, int SGSize);
+typedef struct {
+  void *llvm_module;
+  const char *kernel_name;
+  size_t *alignments;
+  void *alignment_map;
+} pocl_cuda_alignment_query_t;
+
+/* Populate the alignment array with each kernel argument's requirements. */
+int pocl_cuda_get_ptr_arg_alignment(const pocl_cuda_alignment_query_t *query);
+
+int pocl_cuda_define_sub_group_size(void *llvm_module, void *program,
+                                    int SGSize);
 
 #ifdef __cplusplus
 }

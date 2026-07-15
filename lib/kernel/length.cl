@@ -23,5 +23,22 @@
 */
 
 #include "templates.h"
+#include "geometric_helpers.h"
 
-DEFINE_EXPR_S_V(length, sqrt(dot(a, a)))
+#define SCALED_LENGTH                                                       \
+  ({                                                                        \
+    stype scale = pocl_max_abs(a);                                          \
+    stype result;                                                           \
+    if (scale == (stype)0 || isinf(scale))                                  \
+      result = scale;                                                       \
+    else                                                                    \
+      {                                                                     \
+        vtype scaled = a / scale;                                           \
+        result = scale * sqrt(dot(scaled, scaled));                         \
+      }                                                                     \
+    result;                                                                 \
+  })
+
+DEFINE_EXPR_S_V(length, SCALED_LENGTH)
+
+#undef SCALED_LENGTH

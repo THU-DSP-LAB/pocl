@@ -116,8 +116,12 @@ static bool inlineKernels(Function &F) {
   std::string KernelName;
   getModuleStringMetadata(*M, "KernelName", KernelName);
 
-  if (F.getName().str() != KernelName)
+  if (!KernelName.empty()) {
+    if (F.getName() != KernelName)
+      return false;
+  } else if (!pocl::isKernelToProcess(F)) {
     return false;
+  }
 
   if (F.isDeclaration())
     return false;

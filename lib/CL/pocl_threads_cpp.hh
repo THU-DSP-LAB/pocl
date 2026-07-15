@@ -121,6 +121,7 @@ void pocl_barrier_destroy(pocl_barrier_t *B);
 #define POCL_CREATE_THREAD(thr, func, arg) pocl_thread_create(&thr, func, arg)
 #define POCL_JOIN_THREAD(thr) pocl_thread_join(thr)
 #define POCL_THREAD_SELF() pocl_thread_self()
+#define POCL_THREAD_EQUAL(left, right) ((left) == (right))
 
 #define POCL_INIT_BARRIER(bar, number) pocl_barrier_init(&bar, number)
 #define POCL_WAIT_BARRIER(bar) pocl_barrier_wait(bar)

@@ -1673,6 +1673,106 @@ pocl_copy_command_node (_cl_command_node *dst_node, _cl_command_node *src_node)
   return CL_SUCCESS;
 }
 
+typedef struct
+{
+  cl_command_queue queue;
+  struct pocl_device_ops *ops;
+  cl_command_buffer_khr command_buffer;
+  _cl_command_node *node;
+  int notify_command_queue;
+  int active;
+} pocl_event_finish_state;
+
+/* Broadcasts can race after observing a pre-terminal state. The event lock
+ * makes the terminal transition idempotent, while the retained queue keeps
+ * backend data alive through callbacks that may release queue references. */
+static pocl_event_finish_state
+pocl_prepare_event_finish (cl_event event, cl_int status)
+{
+  pocl_event_finish_state state = { 0 };
+  state.queue = event->queue;
+  POCL_LOCK_OBJ (state.queue);
+  POCL_RETAIN_OBJECT_UNLOCKED (state.queue);
+  POCL_LOCK_OBJ (event);
+  if (event->status <= CL_COMPLETE)
+    {
+      POCL_UNLOCK_OBJ (event);
+      POCL_UNLOCK_OBJ (state.queue);
+      PoCLReleaseCommandQueue (state.queue);
+      return state;
+    }
+  assert (event->status > CL_COMPLETE);
+
+  if ((state.queue->properties & CL_QUEUE_PROFILING_ENABLE)
+      && state.queue->device->has_own_timer == 0)
+    event->time_end = pocl_gettimemono_ns ();
+
+  state.ops = state.queue->device->ops;
+  event->status = status;
+  if (state.ops->update_event != NULL)
+    state.ops->update_event (state.queue->device, event);
+  const char *outcome = status == CL_COMPLETE ? "complete" : "FAILED";
+  POCL_MSG_PRINT_EVENTS ("%s: Command %s, event %" PRIu64 "\n",
+                         state.queue->device->short_name, outcome, event->id);
+
+  assert (state.queue->command_count > 0);
+  --state.queue->command_count;
+  if (state.queue->barrier == event)
+    state.queue->barrier = NULL;
+  if (state.queue->last_event.event == event)
+    state.queue->last_event.event = NULL;
+  DL_DELETE (state.queue->events, event);
+  state.notify_command_queue
+    = state.ops->notify_cmdq_finished != NULL
+      && state.queue->command_count == 0
+      && state.queue->notification_waiting_threads;
+
+  POCL_UNLOCK_OBJ (state.queue);
+  pocl_event_updated (event, status);
+  state.command_buffer = event->command_buffer;
+  state.node = event->command;
+  event->command = NULL;
+  state.active = CL_TRUE;
+  POCL_UNLOCK_OBJ (event);
+  return state;
+}
+
+/* Command cleanup must precede broadcast: the next command may rebuild the
+ * same program and requires the completed command's kernel to be released. */
+static void
+pocl_cleanup_finished_command (cl_event event,
+                               const pocl_event_finish_state *state)
+{
+  if (state->node != NULL)
+    pocl_free_event_node (state->node);
+  if (!event->reset_command_buffer)
+    return;
+
+  assert (state->command_buffer != NULL);
+  POCL_LOCK (state->command_buffer->mutex);
+  --state->command_buffer->pending;
+  if (state->command_buffer->pending == 0)
+    state->command_buffer->state = CL_COMMAND_BUFFER_STATE_EXECUTABLE_KHR;
+  POCL_UNLOCK (state->command_buffer->mutex);
+  POname (clReleaseCommandBufferKHR) (state->command_buffer);
+}
+
+static void
+pocl_run_finished_event_notifications (
+  cl_event event, const pocl_event_finish_state *state)
+{
+  POCL_LOCK_OBJ (event);
+  if (state->ops->notify_event_finished != NULL)
+    state->ops->notify_event_finished (event);
+  POCL_UNLOCK_OBJ (event);
+
+  if (!state->notify_command_queue)
+    return;
+  POCL_LOCK_OBJ (state->queue);
+  state->ops->notify_cmdq_finished (state->queue);
+  POCL_UNLOCK_OBJ (state->queue);
+}
+
 /* Status can be complete or failed (<0). */
 void
 pocl_update_event_finished (cl_int status, const char *func, unsigned line,
@@ -1680,141 +1780,23 @@ pocl_update_event_finished (cl_int status, const char *func, unsigned line,
 {
   assert (event != NULL);
   assert (event->queue != NULL);
-  int notify_cmdq = CL_FALSE;
-  cl_command_buffer_khr command_buffer = NULL;
-  _cl_command_node *node = NULL;
+  const pocl_event_finish_state state
+    = pocl_prepare_event_finish (event, status);
+  if (!state.active)
+    return;
 
-  cl_command_queue cq = event->queue;
-  POCL_LOCK_OBJ (cq);
-  POCL_LOCK_OBJ (event);
-  /* Idempotency guard: an event can be driven to a terminal state twice,
-   * concurrently, from two different pocl_broadcast threads. This affects ANY
-   * command with more than one wait-list dependency, not just markers/barriers.
-   * Two interleavings produce it on a failing chain:
-   *
-   *   - Two dependencies finish in ERROR concurrently. Each pocl_broadcast
-   *     calls notify(), which takes the finished->status < CL_COMPLETE branch
-   *     and fails the waiter via pocl_update_event_finished -- twice.
-   *   - One dependency FAILS (failing the waiter) while another dependency's
-   *     COMPLETION drives the waiter terminal too (for a marker/barrier that is
-   *     completion-as-termination; for a regular command it can additionally
-   *     race the submit/execute path).
-   *
-   * These transitions are not mutually exclusive because pocl_broadcast tests
-   * the waiter's "still pending" gate (status == CL_QUEUED/SUBMITTED) BEFORE
-   * calling notify, and notify drops the event lock (a lock-order dance with
-   * the command queue) before the new status is written -- so a second
-   * broadcast can read the stale pre-terminal status and call in here on an
-   * event the first finisher is already terminating.
-   *
-   * OpenCL event state is monotonic: once terminal (CL_COMPLETE or a negative
-   * error) it never changes again, so a second finish is a no-op. The check is
-   * taken under the event lock, so exactly one caller finishes the event and
-   * the other returns cleanly. Bail under the locks we already hold
-   * (reverse-order unlock). */
-  if (event->status <= CL_COMPLETE)
-    {
-      POCL_UNLOCK_OBJ (event);
-      POCL_UNLOCK_OBJ (cq);
-      return;
-    }
-  assert (event->status > CL_COMPLETE);
-  if ((cq->properties & CL_QUEUE_PROFILING_ENABLE)
-      && (cq->device->has_own_timer == 0))
-    event->time_end = pocl_gettimemono_ns ();
-
-  struct pocl_device_ops *ops = cq->device->ops;
-  event->status = status;
-  if (cq->device->ops->update_event)
-    ops->update_event (cq->device, event);
-
-  if (status == CL_COMPLETE)
-    POCL_MSG_PRINT_EVENTS ("%s: Command complete, event %" PRIu64 "\n",
-                           cq->device->short_name, event->id);
-  else
-    POCL_MSG_PRINT_EVENTS ("%s: Command FAILED, event %" PRIu64 "\n",
-                           cq->device->short_name, event->id);
-
-  assert (cq->command_count > 0);
-  --cq->command_count;
-  if (cq->barrier == event)
-    cq->barrier = NULL;
-  if (cq->last_event.event == event)
-    cq->last_event.event = NULL;
-  DL_DELETE (cq->events, event);
-
-  if (ops->notify_cmdq_finished && (cq->command_count == 0) && cq->notification_waiting_threads) {
-    notify_cmdq = CL_TRUE;
-  }
-
-  POCL_UNLOCK_OBJ (cq);
-  /* note that we must unlock the CmqQ before calling pocl_event_updated,
-   * because it calls event callbacks, which can have calls to
-   * clEnqueueSomething() */
-  pocl_event_updated (event, status);
-  command_buffer = event->command_buffer;
-  node = event->command;
-  event->command = NULL;
-  POCL_UNLOCK_OBJ (event);
-
-  /* NOTE: this must be called before we call broadcast.
-   * Reason: pocl_ndrange_node_cleanup releases kernel; broadcast makes the next
-   * event runnable. Assume pocl_ndrange_node_cleanup is not called before
-   * pocl_broadcast; then with this sequence of calls:
-   * clBuildProgram(p)
-   * kernel = clCreateKernel(p)
-   * clEnqueueNDRange(kernel)
-   * clFinish()
-   *   ... pocl_update_event_finished()
-   *      ... pocl_broadcast
-   *      <this cpu thread gets descheduled here, but next events are launched>
-   *      ... pocl_ndrange_node_cleanup
-   * clReleaseKernel(kernel)
-   * clBuildProgram(rebuild the same program again)
-   * ...
-   * since cleanup is still not called at clBuildProgram, this will cause the
-   * clBuildProgram to fail with CL_INVALID_OPERATION(program still has kernels)
-   * this happens with CTS test "compiler", subtests: options_build_macro,
-   * options_build_macro_existence, options_denorm_cache */
-  if (node)
-  {
-    pocl_free_event_node (node);
-  }
-
-  /* NOTE this must be called before we call broadcast, see above */
-  if (event->reset_command_buffer)
-  {
-    assert (command_buffer);
-    POCL_LOCK (command_buffer->mutex);
-    command_buffer->pending -= 1;
-    if (command_buffer->pending == 0)
-        command_buffer->state = CL_COMMAND_BUFFER_STATE_EXECUTABLE_KHR;
-    POCL_UNLOCK (command_buffer->mutex);
-    POname (clReleaseCommandBufferKHR) (command_buffer);
-  }
-
-  ops->broadcast (event);
+  pocl_cleanup_finished_command (event, &state);
+  state.ops->broadcast (event);
 
 #ifdef POCL_DEBUG_MESSAGES
   if (msg != NULL)
-    {
-      pocl_debug_print_duration (
-          func, line, msg, (uint64_t) (event->time_end - event->time_start));
-    }
+    pocl_debug_print_duration (
+      func, line, msg, (uint64_t) (event->time_end - event->time_start));
 #endif
 
-  POCL_LOCK_OBJ (event);
-  if (ops->notify_event_finished)
-    ops->notify_event_finished (event);
-  POCL_UNLOCK_OBJ (event);
-
-  if (notify_cmdq) {
-    POCL_LOCK_OBJ (cq);
-    ops->notify_cmdq_finished (cq);
-    POCL_UNLOCK_OBJ (cq);
-  }
-
+  pocl_run_finished_event_notifications (event, &state);
   POname (clReleaseEvent) (event);
+  PoCLReleaseCommandQueue (state.queue);
 }
 
 void
@@ -2325,8 +2307,10 @@ struct _pocl_async_callback_item
 
 static pocl_async_callback_item *async_callback_list = NULL;
 POCL_ALIGNAS(HOST_CPU_CACHELINE_SIZE) static pocl_cond_t async_cb_wake_cond;
+POCL_ALIGNAS(HOST_CPU_CACHELINE_SIZE) static pocl_cond_t async_cb_idle_cond;
 POCL_ALIGNAS(HOST_CPU_CACHELINE_SIZE) static pocl_lock_t async_cb_lock;
 static int exit_pocl_async_callback_thread = CL_FALSE;
+static int async_callback_active = CL_FALSE;
 static pocl_thread_t async_callback_thread_id = 0;
 
 static void
@@ -2398,15 +2382,40 @@ pocl_mem_cb_push (cl_mem mem)
   pocl_async_cb_push (it);
 }
 
+int
+pocl_async_callback_wait ()
+{
+  if (!async_callback_thread_id)
+    return CL_TRUE;
+  if (POCL_THREAD_EQUAL (POCL_THREAD_SELF (), async_callback_thread_id))
+    {
+      POCL_MSG_WARN ("Cannot wait for asynchronous callbacks from the "
+                     "callback thread itself\n");
+      return CL_FALSE;
+    }
+
+  POCL_LOCK (async_cb_lock);
+  while (async_callback_list != NULL || async_callback_active)
+    POCL_WAIT_COND (async_cb_idle_cond, async_cb_lock);
+  POCL_UNLOCK (async_cb_lock);
+  return CL_TRUE;
+}
+
 void
 pocl_async_callback_finish ()
 {
+  if (!async_callback_thread_id)
+    return;
+  if (!pocl_async_callback_wait ())
+    POCL_ABORT ("Cannot finish asynchronous callbacks from their worker "
+                "thread\n");
   POCL_LOCK (async_cb_lock);
   exit_pocl_async_callback_thread = CL_TRUE;
   POCL_SIGNAL_COND (async_cb_wake_cond);
   POCL_UNLOCK (async_cb_lock);
-  if (async_callback_thread_id)
-    POCL_JOIN_THREAD (async_callback_thread_id);
+  POCL_JOIN_THREAD (async_callback_thread_id);
+  async_callback_thread_id = 0;
+  POCL_DESTROY_COND (async_cb_idle_cond);
   POCL_DESTROY_COND (async_cb_wake_cond);
   POCL_DESTROY_LOCK (async_cb_lock);
 }
@@ -2437,6 +2446,11 @@ process_mem_cb (pocl_async_callback_item *it)
   cl_mem mem = it->data.mem_cb.mem;
   mem_destructor_callback_t *cb = it->data.mem_cb.cb;
   mem_destructor_callback_t *next_cb = NULL;
+
+  /* A CL_MEM_USE_HOST_PTR callback may release the user allocation.  Device
+     registrations must therefore be gone before the callback is invoked. */
+  pocl_release_mem_device_resources (mem);
+
   while (cb)
     {
       next_cb = cb->next;
@@ -2476,6 +2490,7 @@ pocl_async_callback_thread (void *data)
         {
           it = async_callback_list;
           LL_DELETE (async_callback_list, it);
+          async_callback_active = CL_TRUE;
         }
       else
         {
@@ -2499,6 +2514,9 @@ pocl_async_callback_thread (void *data)
             }
           free (it);
           POCL_LOCK (async_cb_lock);
+          async_callback_active = CL_FALSE;
+          if (async_callback_list == NULL)
+            POCL_BROADCAST_COND (async_cb_idle_cond);
         }
     }
 
@@ -2511,7 +2529,9 @@ pocl_async_callback_init ()
 {
   POCL_INIT_LOCK (async_cb_lock);
   POCL_INIT_COND (async_cb_wake_cond);
+  POCL_INIT_COND (async_cb_idle_cond);
   exit_pocl_async_callback_thread = CL_FALSE;
+  async_callback_active = CL_FALSE;
   async_callback_thread_id = 0;
   async_callback_list = NULL;
   POCL_CREATE_THREAD (async_callback_thread_id, pocl_async_callback_thread,

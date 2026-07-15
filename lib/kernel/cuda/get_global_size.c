@@ -37,6 +37,6 @@ get_global_size(unsigned int dimindx)
     case 0: return get_nvvm_ntid_x() * get_nvvm_nctaid_x();
     case 1: return get_nvvm_ntid_y() * get_nvvm_nctaid_y();
     case 2: return get_nvvm_ntid_z() * get_nvvm_nctaid_z();
-    default: return 0;
+    default: return 1;
     }
 }

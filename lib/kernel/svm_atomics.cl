@@ -179,7 +179,7 @@ atomic_store (volatile Q ATOMIC_TYPE *object, NONATOMIC_TYPE desired)
 
 void _CL_OVERLOADABLE atomic_init (volatile Q ATOMIC_TYPE *object, NONATOMIC_TYPE value)
 {
-  atomic_store_explicit(object, value, memory_order_seq_cst);
+  *(volatile Q NONATOMIC_TYPE *)object = value;
 }
 
 NONATOMIC_TYPE _CL_OVERLOADABLE

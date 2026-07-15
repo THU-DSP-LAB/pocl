@@ -132,6 +132,12 @@ pocl_check_uninit_devices ()
   if (!do_uninit)
     return;
 
+  /* Callback-owned object references must be released before checking the
+     context count. Wait before taking the context lock because callback
+     cleanup can release the final context reference. */
+  if (!pocl_async_callback_wait ())
+    return;
+
   POCL_LOCK (pocl_context_handling_lock);
   if (cl_context_count == 0)
     {

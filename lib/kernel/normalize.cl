@@ -23,5 +23,24 @@
 */
 
 #include "templates.h"
+#include "geometric_helpers.h"
 
-DEFINE_EXPR_V_V(normalize, ({ stype li = rsqrt(dot(a, a)); li * a; }))
+#define SCALED_NORMALIZE                                                    \
+  ({                                                                        \
+    stype scale = pocl_max_abs(a);                                          \
+    vtype result;                                                           \
+    if (scale == (stype)0)                                                  \
+      result = a;                                                           \
+    else if (isinf(scale))                                                  \
+      result = a / scale;                                                   \
+    else                                                                    \
+      {                                                                     \
+        vtype scaled = a / scale;                                           \
+        result = scaled / sqrt(dot(scaled, scaled));                        \
+      }                                                                     \
+    result;                                                                 \
+  })
+
+DEFINE_EXPR_V_V(normalize, SCALED_NORMALIZE)
+
+#undef SCALED_NORMALIZE

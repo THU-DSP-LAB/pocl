@@ -33,6 +33,12 @@ get_local_size(unsigned int dimindx)
     case 0: return get_nvvm_ntid_x();
     case 1: return get_nvvm_ntid_y();
     case 2: return get_nvvm_ntid_z();
-    default: return 0;
+    default: return 1;
     }
+}
+
+size_t _CL_OVERLOADABLE
+get_enqueued_local_size(unsigned int dimindx)
+{
+  return get_local_size(dimindx);
 }
