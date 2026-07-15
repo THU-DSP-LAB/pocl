@@ -253,10 +253,20 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
                 params[i] = arguments[i].value;
               }
             else if (meta->arg_info[i].address_qualifier
-                     == CL_KERNEL_ARG_ADDRESS_CONSTANT)
+              == CL_KERNEL_ARG_ADDRESS_CONSTANT)
               {
-                assert (constant_mem_base);
                 assert (arguments[i].is_raw_ptr == 0);
+
+                /* An absent region means every constant pointer was removed
+                 * as unused. The offset argument remains in the kernel ABI. */
+                if (constant_mem_size == 0)
+                  {
+                    assert (constant_mem_base == 0);
+                    constantMemOffsets[i] = 0;
+                    params[i] = constantMemOffsets + i;
+                    break;
+                  }
+                assert (constant_mem_base);
 
                 /* Get device pointer */
                 cl_mem mem = *(void **)arguments[i].value;

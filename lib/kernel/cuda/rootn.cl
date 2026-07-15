@@ -3,6 +3,7 @@
 #include "../templates.h"
 
 double __nv_exp2(double);
+double __nv_ldexp(double, int);
 double __nv_log2(double);
 double __nv_sqrt(double);
 double __nv_cbrt(double);
@@ -21,7 +22,7 @@ static double pocl_cuda_rootn_zero(double value, int exponent) {
   return odd_exponent ? copysign((double)INFINITY, value) : INFINITY;
 }
 
-static double pocl_cuda_scaled_log2(double value) {
+static double pocl_cuda_normalize(double value, int *binary_exponent) {
   const ulong bits = as_ulong(value);
   const ulong fraction = bits & POCL_DOUBLE_FRACTION_MASK;
   const int biased_exponent = (int)(bits >> POCL_DOUBLE_EXPONENT_SHIFT) &
@@ -29,8 +30,8 @@ static double pocl_cuda_scaled_log2(double value) {
   if (biased_exponent != 0) {
     const ulong normalized_bits = fraction | ((ulong)POCL_DOUBLE_EXPONENT_BIAS
                                               << POCL_DOUBLE_EXPONENT_SHIFT);
-    return (double)(biased_exponent - POCL_DOUBLE_EXPONENT_BIAS) +
-           __nv_log2(as_double(normalized_bits));
+    *binary_exponent = biased_exponent - POCL_DOUBLE_EXPONENT_BIAS;
+    return as_double(normalized_bits);
   }
 
   const int highest_fraction_bit = POCL_ULONG_HIGHEST_BIT - (int)clz(fraction);
@@ -38,22 +39,36 @@ static double pocl_cuda_scaled_log2(double value) {
   const ulong normalized_bits =
       ((fraction << shift) & POCL_DOUBLE_FRACTION_MASK) |
       ((ulong)POCL_DOUBLE_EXPONENT_BIAS << POCL_DOUBLE_EXPONENT_SHIFT);
-  const int exponent =
+  *binary_exponent =
       highest_fraction_bit - POCL_DOUBLE_SUBNORMAL_EXPONENT_OFFSET;
-  return (double)exponent + __nv_log2(as_double(normalized_bits));
+  return as_double(normalized_bits);
 }
 
-static double pocl_cuda_positive_root(double value, uint degree) {
+static double pocl_cuda_root_magnitude(double value, uint degree,
+                                       bool reciprocal) {
   if (isnan(value) || isinf(value))
-    return value;
+    return reciprocal ? 1.0 / value : value;
   if (degree == 1u)
-    return value;
+    return reciprocal ? 1.0 / value : value;
   if (degree == 2u)
-    return __nv_sqrt(value);
+    return reciprocal ? 1.0 / __nv_sqrt(value) : __nv_sqrt(value);
   if (degree == 3u)
-    return __nv_cbrt(value);
+    return reciprocal ? 1.0 / __nv_cbrt(value) : __nv_cbrt(value);
 
-  return __nv_exp2(pocl_cuda_scaled_log2(value) / (double)degree);
+  int binary_exponent;
+  const double mantissa = pocl_cuda_normalize(value, &binary_exponent);
+  const long signed_degree = (long)degree;
+  long exponent_quotient = (long)binary_exponent / signed_degree;
+  const long exponent_remainder =
+      (long)binary_exponent - exponent_quotient * signed_degree;
+  double fractional_exponent =
+      ((double)exponent_remainder + __nv_log2(mantissa)) / (double)degree;
+  if (reciprocal) {
+    exponent_quotient = -exponent_quotient;
+    fractional_exponent = -fractional_exponent;
+  }
+  return __nv_ldexp(__nv_exp2(fractional_exponent),
+                    (int)exponent_quotient);
 }
 
 static double pocl_cuda_rootn(double value, int exponent) {
@@ -67,8 +82,8 @@ static double pocl_cuda_rootn(double value, int exponent) {
   if (value < 0.0 && (degree & 1u) == 0u)
     return not_a_number;
 
-  const double positive_root = pocl_cuda_positive_root(fabs(value), degree);
-  const double magnitude = exponent < 0 ? 1.0 / positive_root : positive_root;
+  const double magnitude =
+      pocl_cuda_root_magnitude(fabs(value), degree, exponent < 0);
   return copysign(magnitude, value);
 }
 

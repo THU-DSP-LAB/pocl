@@ -75,3 +75,23 @@ The runner rejects a busy GPU and rejects every CTS binary whose dynamic
 `libOpenCL` resolution is not the installed PoCL library. Test selection
 with `--filter` is for root-cause reproduction only and is not an acceptance
 run.
+
+## CTS expanded
+
+Goal 2 adds a version-controlled manifest for official CTS modes omitted or
+reduced by the quick CSV:
+
+```sh
+tools/scripts/cuda_stable/run_cts_quick.py --suite expanded --timeout 1800
+```
+
+The expanded tier runs full thread-dimension, multiple-context, vector-layout,
+integer, and half suites, wimpy conversions, and selected non-wimpy math
+functions. Long conversions, integer, `rootn`, and `remquo` modes are split
+into explicit, non-overlapping CTS ranges or registered test/type/vector modes
+so each process remains within the watchdog without reducing coverage. It uses
+the same loader, device-contract, process-group, raw-log, and GPU-residue
+checks as quick. An
+arbitrary version-controlled manifest can be selected explicitly with
+`--csv PATH`. For a warm-cache repeat with a separate immutable result
+directory, pass the first run's cache explicitly with `--cache-dir PATH`.

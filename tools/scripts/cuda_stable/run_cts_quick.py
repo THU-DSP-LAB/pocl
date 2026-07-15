@@ -31,6 +31,8 @@ TERMINATION_GRACE_SECONDS = 5
 GPU_IDLE_WAIT_SECONDS = 10
 GPU_IDLE_POLL_SECONDS = 0.2
 DEFAULT_CTS_TIMEOUT_SECONDS = 900
+DEFAULT_SUITE = "quick"
+KNOWN_SUITES = (DEFAULT_SUITE, "expanded")
 
 
 @dataclass(frozen=True)
@@ -61,28 +63,61 @@ class RunnerConfig:
     output_dir: Path
     timeout_seconds: int | None
     name_filter: str | None
+    suite_name: str
+    csv_path: Path
+    cache_dir: Path
 
     @property
     def cts_dir(self) -> Path:
         return self.build_dir / "examples/conformance/src/conformance-build/test_conformance"
 
     @property
-    def csv_path(self) -> Path:
-        return self.cts_dir / "opencl_conformance_tests_quick.csv"
-
-    @property
     def library(self) -> Path:
         return self.install_dir / "lib/libOpenCL.so"
+
+
+def suite_csv_path(
+    script_dir: Path,
+    build_dir: Path,
+    suite_name: str,
+    *,
+    custom_csv: Path | None,
+) -> Path:
+    if custom_csv is not None:
+        return custom_csv.resolve()
+    if suite_name == DEFAULT_SUITE:
+        return (
+            build_dir
+            / "examples/conformance/src/conformance-build/test_conformance"
+            / "opencl_conformance_tests_quick.csv"
+        )
+    return script_dir / f"opencl_conformance_tests_{suite_name}.csv"
+
+
+def selected_cache_dir(output_dir: Path, custom_cache: Path | None) -> Path:
+    return (custom_cache or output_dir / "kernel-cache").resolve()
 
 
 def parse_args() -> RunnerConfig:
     script_dir = Path(__file__).resolve().parent
     source_dir = script_dir.parents[2]
     default_build = source_dir / "build_cuda_stable"
-    parser = argparse.ArgumentParser(description="Run CTS quick with hard process-group timeouts")
+    parser = argparse.ArgumentParser(
+        description="Run a PoCL CUDA CTS suite with hard process-group timeouts"
+    )
     parser.add_argument("--build-dir", type=Path, default=default_build)
     parser.add_argument("--install-dir", type=Path)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        help="kernel cache path; defaults inside the output directory",
+    )
+    suite_group = parser.add_mutually_exclusive_group()
+    suite_group.add_argument("--suite", choices=KNOWN_SUITES, default=DEFAULT_SUITE)
+    suite_group.add_argument(
+        "--csv", type=Path, help="explicit CTS CSV manifest; overrides named suites"
+    )
     parser.add_argument(
         "--timeout",
         type=int,
@@ -96,16 +131,34 @@ def parse_args() -> RunnerConfig:
     args = parser.parse_args()
     build_dir = args.build_dir.resolve()
     install_dir = (args.install_dir or build_dir / "install").resolve()
+    suite_name = args.csv.stem if args.csv is not None else args.suite
+    csv_path = suite_csv_path(
+        script_dir, build_dir, args.suite, custom_csv=args.csv
+    )
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    output_dir = (args.output_dir or build_dir / f"validation-logs/cts-quick-{timestamp}").resolve()
+    output_dir = (
+        args.output_dir or build_dir / f"validation-logs/cts-{suite_name}-{timestamp}"
+    ).resolve()
+    cache_dir = selected_cache_dir(output_dir, args.cache_dir)
     if args.timeout < 0:
         parser.error("--timeout must be non-negative")
     timeout_seconds = args.timeout or None
-    return RunnerConfig(build_dir, install_dir, output_dir, timeout_seconds, args.name_filter)
+    return RunnerConfig(
+        build_dir=build_dir,
+        install_dir=install_dir,
+        output_dir=output_dir,
+        timeout_seconds=timeout_seconds,
+        name_filter=args.name_filter,
+        suite_name=suite_name,
+        csv_path=csv_path,
+        cache_dir=cache_dir,
+    )
 
 
 def load_tests(config: RunnerConfig) -> tuple[TestCase, ...]:
     tests: list[TestCase] = []
+    if not config.csv_path.is_file():
+        raise RuntimeError(f"CTS CSV manifest does not exist: {config.csv_path}")
     with config.csv_path.open(newline="", encoding="utf-8") as handle:
         for row in csv.reader(handle):
             if not row or row[0].lstrip().startswith("#"):
@@ -136,7 +189,7 @@ def runtime_environment(config: RunnerConfig) -> dict[str, str]:
         f"{library_path}:{old_library_path}" if old_library_path else library_path
     )
     environment["POCL_DEVICES"] = "cuda"
-    environment["POCL_CACHE_DIR"] = str(config.output_dir / "kernel-cache")
+    environment["POCL_CACHE_DIR"] = str(config.cache_dir)
     environment.pop("POCL_CUDA_GPU_ARCH", None)
     return environment
 
@@ -238,6 +291,9 @@ def record_environment(
     }
     report = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "suite": config.suite_name,
+        "csv": str(config.csv_path),
+        "cache_dir": str(config.cache_dir),
         "library": str(config.library.resolve(strict=True)),
         "build_dir": str(config.build_dir),
         "install_dir": str(config.install_dir),
@@ -311,16 +367,16 @@ def run_test(
     else:
         status = "pass"
     return TestResult(
-        test.name,
-        command,
-        status,
-        return_code,
-        crash_signal,
-        duration,
-        timed_out,
-        markers,
-        str(stdout_path),
-        str(stderr_path),
+        name=test.name,
+        command=command,
+        status=status,
+        return_code=return_code,
+        signal=crash_signal,
+        duration_seconds=duration,
+        timed_out=timed_out,
+        failure_markers=markers,
+        stdout_log=str(stdout_path),
+        stderr_log=str(stderr_path),
     )
 
 
