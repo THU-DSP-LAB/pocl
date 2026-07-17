@@ -29,11 +29,6 @@ set(TS_BASEDIR "${TESTSUITE_BASEDIR}/${TS_NAME}")
 set(TS_BUILDDIR "${TS_BASEDIR}/src/${TS_NAME}-build")
 set(TS_SRCDIR "${TS_BASEDIR}/src/${TS_NAME}")
 
-if(NOT HAVE_GIT)
-  message(STATUS "Disabling testsuite ${TS_NAME}, requires git to checkout sources")
-  return()
-endif()
-
 if(ENABLE_ICD AND (NOT OPENCL_LIBRARIES))
   message(STATUS "Disabling ${TS_NAME}, can't find OpenCL library")
   return()
@@ -75,17 +70,20 @@ else()
   set(CTS_OPENCL_LIBRARY "-DOPENCL_LIBRARIES=$<TARGET_FILE_NAME:${POCL_LIBRARY_NAME}>")
 endif()
 
-if(CUSTOM_CTS_GIT_REPO)
-  set(CTS_GIT_REPO "${CUSTOM_CTS_GIT_REPO}")
-else()
-  # Use PoCL's fork which has pending fixes.
-  set(CTS_GIT_REPO "https://github.com/pocl/OpenCL-CTS")
+set(OPENCL_CTS_SOURCE_DIR "" CACHE PATH
+  "Path to a pre-existing OpenCL-CTS checkout")
+if(NOT OPENCL_CTS_SOURCE_DIR)
+  message(FATAL_ERROR
+    "OpenCL-CTS must be provided as a local checkout. "
+    "Set -DOPENCL_CTS_SOURCE_DIR=<path-to-OpenCL-CTS>.")
 endif()
-if(CUSTOM_CTS_GIT_TAG)
-  set(CTS_GIT_TAG "${CUSTOM_CTS_GIT_TAG}")
-else()
-  # Use PoCL's fork which has pending fixes.
-  set(CTS_GIT_TAG "v2026.06.02")
+get_filename_component(OPENCL_CTS_SOURCE_DIR
+  "${OPENCL_CTS_SOURCE_DIR}" ABSOLUTE)
+if(NOT EXISTS "${OPENCL_CTS_SOURCE_DIR}/CMakeLists.txt" OR
+   NOT EXISTS "${OPENCL_CTS_SOURCE_DIR}/test_conformance")
+  message(FATAL_ERROR
+    "OPENCL_CTS_SOURCE_DIR is not an initialized OpenCL-CTS checkout: "
+    "${OPENCL_CTS_SOURCE_DIR}")
 endif()
 
 set(TS_BUILDDIR "${TS_BUILDDIR}/test_conformance")
@@ -139,13 +137,12 @@ endif()
 ExternalProject_Add(
   ${TS_NAME}
   PREFIX "${TS_BASEDIR}"
-  GIT_REPOSITORY "${CTS_GIT_REPO}"
-  GIT_TAG "${CTS_GIT_TAG}"
-  ${GIT_OPTIONS}
+  SOURCE_DIR "${OPENCL_CTS_SOURCE_DIR}"
+  DOWNLOAD_COMMAND ""
   CMAKE_ARGS
     ${UPSTREAM_CMAKE_ARGS}
     -DD3D10_IS_SUPPORTED=0 -DD3D11_IS_SUPPORTED=0
-    -DGL_IS_SUPPORTED=1 -DGLES_IS_SUPPORTED=0
+    -DGL_IS_SUPPORTED=0 -DGLES_IS_SUPPORTED=0
     -DCL_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
     -DSPIRV_INCLUDE_DIR=${CTS_SPIRV_INCLUDE_DIR}
     ${CTS_SPIRV_TOOLS_ARG}
@@ -153,7 +150,6 @@ ExternalProject_Add(
     ${CTS_OPENCL_LIBRARY}
     -DENABLE_ASAN=${ENABLE_ASAN}
     -DENABLE_TSAN=${ENABLE_TSAN}
-    "${TS_BASEDIR}/src/${TS_NAME}"
   INSTALL_COMMAND ""
 )
 

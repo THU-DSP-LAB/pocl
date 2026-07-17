@@ -63,11 +63,14 @@ How to run the OpenCL 3.0 conformance test suite
 You'll need to build PoCL with enabled ICD, and the ICD must be one that supports
 OpenCL version 3.0 (for ocl-icd, this is available since version 2.3.0).
 This is because while the CTS will run with 1.2 devices, it requires 3.0 headers
-and 3.0 ICD to build. You'll also need to enable the suite in the pocl's external test suite set.
-This is done by adding ``-DENABLE_TESTSUITES=conformance -DENABLE_CONFORMANCE=ON``
-to the cmake command line. After this ``make prepare_examples`` fetches and
-prepares the conformance suite for testing. After building pocl with ``make``,
-the CTS can be run with ``ctest -L <LABEL>`` where ``<LABEL>`` is a CTest label.
+and 3.0 ICD to build. You'll also need a pre-existing OpenCL-CTS checkout and
+to enable the suite in pocl's external test suite set. This is done by adding
+``-DENABLE_TESTSUITES=conformance -DENABLE_CONFORMANCE=ON`` and
+``-DOPENCL_CTS_SOURCE_DIR=<path-to-OpenCL-CTS>`` to the cmake command line.
+The build never downloads or updates the checkout. After this
+``make prepare_examples`` prepares the conformance suite for testing. After
+building pocl with ``make``, the CTS can be run with ``ctest -L <LABEL>`` where
+``<LABEL>`` is a CTest label.
 
 There are two different CTest labels for using CTS, one label covers the full
 set tests in CTS, the other contains a much smaller subset of CTS tests. The

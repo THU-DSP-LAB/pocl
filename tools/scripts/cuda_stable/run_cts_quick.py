@@ -108,7 +108,11 @@ def selected_cache_dir(output_dir: Path, custom_cache: Path | None) -> Path:
 def parse_args() -> RunnerConfig:
     script_dir = Path(__file__).resolve().parent
     source_dir = script_dir.parents[2]
-    default_build = source_dir / "build_cuda_stable"
+    repository_dir = source_dir.parent
+    default_build = repository_dir / "build/pocl"
+    default_install = Path(
+        os.environ.get("INSTALL_DIR", repository_dir / "install")
+    )
     parser = argparse.ArgumentParser(
         description="Run a PoCL CUDA CTS suite with hard process-group timeouts"
     )
@@ -137,7 +141,7 @@ def parse_args() -> RunnerConfig:
     parser.add_argument("--filter", dest="name_filter")
     args = parser.parse_args()
     build_dir = args.build_dir.resolve()
-    install_dir = (args.install_dir or build_dir / "install").resolve()
+    install_dir = (args.install_dir or default_install).resolve()
     suite_name = args.csv.stem if args.csv is not None else args.suite
     csv_path = suite_csv_path(
         script_dir, build_dir, args.suite, custom_csv=args.csv

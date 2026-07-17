@@ -4,7 +4,8 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SOURCE_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-readonly BUILD_DIR="${POCL_CUDA_BUILD_DIR:-$SOURCE_DIR/build_cuda_stable}"
+readonly REPOSITORY_DIR="$(cd "$SOURCE_DIR/.." && pwd)"
+readonly BUILD_DIR="${POCL_CUDA_BUILD_DIR:-$REPOSITORY_DIR/build/pocl}"
 readonly LOG_DIR="$BUILD_DIR/validation-logs"
 readonly TEST_TIMEOUT_SECONDS=60
 

@@ -4,8 +4,10 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SOURCE_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-readonly BUILD_DIR="${POCL_CUDA_BUILD_DIR:-$SOURCE_DIR/build_cuda_stable}"
-readonly INSTALL_DIR="${POCL_CUDA_INSTALL_DIR:-$BUILD_DIR/install}"
+readonly REPOSITORY_DIR="$(cd "$SOURCE_DIR/.." && pwd)"
+readonly BUILD_DIR="${POCL_CUDA_BUILD_DIR:-$REPOSITORY_DIR/build/pocl}"
+readonly INSTALL_DIR="${INSTALL_DIR:-$REPOSITORY_DIR/install}"
+readonly OPENCL_CTS_SOURCE_DIR="$REPOSITORY_DIR/third_party/OpenCL-CTS"
 readonly LOG_DIR="$BUILD_DIR/validation-logs/build"
 readonly JOBS="${POCL_BUILD_JOBS:-$(nproc)}"
 readonly LLVM_CONFIG="${LLVM_CONFIG:-/usr/bin/llvm-config-18}"
@@ -39,6 +41,12 @@ verify_toolchain() {
     echo "Missing SPIR-V headers: $grammar" >&2
     return 1
   fi
+
+  if [[ ! -f "$OPENCL_CTS_SOURCE_DIR/CMakeLists.txt" ]]; then
+    echo "Missing OpenCL-CTS submodule: $OPENCL_CTS_SOURCE_DIR" >&2
+    echo "Run: git submodule update --init --recursive" >&2
+    return 1
+  fi
 }
 
 configure() {
@@ -56,6 +64,7 @@ configure() {
     -DENABLE_TESTS=ON \
     -DENABLE_TESTSUITES=conformance \
     -DCTS_SPIRV_INCLUDE_DIR=/usr \
+    -DOPENCL_CTS_SOURCE_DIR="$OPENCL_CTS_SOURCE_DIR" \
     |& tee "$LOG_DIR/configure.log"
 }
 

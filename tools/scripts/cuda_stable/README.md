@@ -13,12 +13,13 @@ CTS inputs:
 ```sh
 sudo apt-get update
 sudo apt-get install llvm-18-dev libclang-18-dev libclang-cpp18-dev \
-  spirv-headers spirv-tools ninja-build libgl-dev libglu1-mesa-dev \
-  freeglut3-dev libglew-dev libx11-dev
+  spirv-headers spirv-tools ninja-build libxml2-dev
 ```
 
-The SPIR-V headers are a CTS build dependency. The CUDA device does not expose
-SPIR or SPIR-V IL support in this baseline.
+The SPIR-V headers are a CTS build dependency. OpenCL CTS itself is provided by
+the top-level `third_party/OpenCL-CTS` submodule and is never fetched by CMake.
+The CUDA device does not expose SPIR, SPIR-V IL, or OpenGL interoperability in
+this baseline, so the corresponding CTS modes are disabled.
 
 ## Clean build and install
 
@@ -28,17 +29,17 @@ From a clean checkout:
 tools/scripts/cuda_stable/build.sh
 ```
 
-The default build and install roots are `build_cuda_stable/` and
-`build_cuda_stable/install/`. Override them with `POCL_CUDA_BUILD_DIR` and
-`POCL_CUDA_INSTALL_DIR`. Configure, build, install, and CTS build logs are kept
-under `build_cuda_stable/validation-logs/build/`.
+The default build tree is `<repository>/build/pocl/`, and every component is
+installed into the shared `<repository>/install/` prefix. Override them with
+`POCL_CUDA_BUILD_DIR` and `INSTALL_DIR`. Configure, build, install, and CTS
+build logs are kept under `<repository>/build/pocl/validation-logs/build/`.
 
 ## Device contract
 
 ```sh
 POCL_DEVICES=cuda \
   tools/scripts/cuda_stable/verify_device.py \
-  --library build_cuda_stable/install/lib/libOpenCL.so
+  --library ../install/lib/libOpenCL.so
 ```
 
 The audit fails on any undeclared architecture, extension-list mismatch, or
@@ -69,7 +70,7 @@ minute; pass `--timeout 0` to disable the watchdog explicitly. A timeout sends
 `SIGTERM` to the whole group and then `SIGKILL` if termination has not completed
 after five seconds. Raw stdout, raw stderr, exit status, signal, environment,
 loader path, and an incrementally updated JSON summary are retained below
-`build_cuda_stable/validation-logs/cts-quick-<UTC timestamp>/`.
+`<repository>/build/pocl/validation-logs/cts-quick-<UTC timestamp>/`.
 
 The runner rejects a busy GPU and rejects every CTS binary whose dynamic
 `libOpenCL` resolution is not the installed PoCL library. Test selection
@@ -103,8 +104,8 @@ manifest partition before starting the long run:
 
 ```sh
 tools/scripts/cuda_stable/cts_goal3_manifest.py \
-  --cts-dir build_cuda_stable/examples/conformance/src/conformance-build/test_conformance \
-  --install-dir build_cuda_stable/install \
+  --cts-dir ../build/pocl/examples/conformance/src/conformance-build/test_conformance \
+  --install-dir ../install \
   --device-contract PATH/TO/device-contract.json
 ```
 
