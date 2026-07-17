@@ -1,0 +1,7 @@
+# PoCL NVIDIA Goal 4 first-priority compute extensions.
+# Each entry is executed independently and retained in cold/warm evidence.
+Integer Ops All Registered,integer_ops/test_integer_ops
+Compiler Extension Contract,compiler/test_compiler compiler_defines_for_extensions features_macro features_macro_coupling opencl_c_versions
+API Extension Contract,api/test_api get_device_info negative_get_device_info platform_extensions spirv_query_dependencies spirv_query_requirements
+Buffer Device Address,extensions/cl_ext_buffer_device_address/test_cl_ext_buffer_device_address
+Kernel Clock,extensions/cl_khr_kernel_clock/test_cl_khr_kernel_clock

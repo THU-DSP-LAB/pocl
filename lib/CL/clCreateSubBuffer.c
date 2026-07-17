@@ -162,6 +162,8 @@ POname (clCreateSubBuffer) (cl_mem parent,
   mem->size = info->size;
   mem->origin = info->origin;
   pocl_cl_mem_inherit_flags (mem, parent, flags);
+  mem->flags |= parent->flags & CL_MEM_DEVICE_PRIVATE_ADDRESS_EXT;
+  mem->has_device_address = parent->has_device_address;
   /* All other struct members are NULL (not valid). */
 
   if (tr_info)
@@ -215,6 +217,11 @@ POname (clCreateSubBuffer) (cl_mem parent,
           int ret_val = dev->ops->alloc_subbuffer (dev, mem);
           POCL_GOTO_ERROR_COND ((ret_val != CL_SUCCESS), ret_val);
         }
+
+      if (mem->has_device_address)
+        mem->device_ptrs[dev->global_mem_id].device_addr
+          = (char *)parent->device_ptrs[dev->global_mem_id].device_addr
+            + info->origin;
     }
   if (parent->mem_host_ptr != NULL)
     mem->mem_host_ptr = (char *)parent->mem_host_ptr + info->origin;

@@ -1144,6 +1144,19 @@ pocl_reset_indirect_ptrs (cl_kernel kernel, void **ptrs, size_t n)
         = pocl_find_raw_ptr_with_vm_ptr (kernel->context, ptr);
 
       if (svm_ptr == NULL)
+        {
+          for (unsigned device_i = 0;
+               device_i < kernel->context->num_devices; ++device_i)
+            {
+              cl_device_id dev = kernel->context->devices[device_i];
+              svm_ptr = pocl_find_raw_ptr_with_dev_ptr (kernel->context, dev,
+                                                        ptr);
+              if (svm_ptr != NULL)
+                break;
+            }
+        }
+
+      if (svm_ptr == NULL)
         continue;
 
       struct _pocl_ptr_list_node *node

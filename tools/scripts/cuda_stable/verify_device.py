@@ -17,12 +17,34 @@ EXPECTED_EXTENSIONS = frozenset(
         "cl_khr_global_int32_extended_atomics",
         "cl_khr_local_int32_base_atomics",
         "cl_khr_local_int32_extended_atomics",
+        "cl_khr_integer_dot_product",
+        "cl_khr_extended_bit_ops",
+        "cl_ext_buffer_device_address",
+        "cl_khr_kernel_clock",
         "cl_khr_fp64",
         "cl_nv_device_attribute_query",
     }
 )
-EXPECTED_FEATURES = frozenset({"__opencl_c_fp64", "__opencl_c_int64"})
-EXPECTED_CONFORMANCE_VERSION = "v2026-07-14-00"
+EXPECTED_FEATURES = frozenset(
+    {
+        "__opencl_c_fp64",
+        "__opencl_c_int64",
+        "__opencl_c_integer_dot_product_input_4x8bit",
+        "__opencl_c_integer_dot_product_input_4x8bit_packed",
+        "__opencl_c_kernel_clock_scope_device",
+        "__opencl_c_kernel_clock_scope_work_group",
+        "__opencl_c_kernel_clock_scope_sub_group",
+    }
+)
+EXTENSION_VERSIONS = {
+    "cl_khr_integer_dot_product": "2.0.0",
+    "cl_ext_buffer_device_address": "1.0.2",
+}
+EXPECTED_EXTENSION_VERSIONS = frozenset(
+    f"{name}@{EXTENSION_VERSIONS.get(name, '1.0.0')}" for name in EXPECTED_EXTENSIONS
+)
+EXPECTED_FEATURE_VERSIONS = frozenset(f"{name}@3.0.0" for name in EXPECTED_FEATURES)
+EXPECTED_CONFORMANCE_VERSION = "v2026-07-17-00"
 CL_FP_DENORM = 1 << 0
 CL_FP_INF_NAN = 1 << 1
 CL_FP_ROUND_TO_NEAREST = 1 << 2
@@ -74,8 +96,8 @@ def validate_strings(device: DeviceSnapshot) -> list[str]:
         actual = getattr(device, field)
         if actual != expected:
             failures.append(f"{field}: expected {expected!r}, found {actual!r}")
-    if "OpenCL 3.0" not in device.device_version or "CUDA-sm_89" not in device.device_version:
-        failures.append(f"device_version does not identify OpenCL 3.0 CUDA-sm_89: {device.device_version}")
+    if "OpenCL 3.0" not in device.device_version or "CUDA-sm_89-v6" not in device.device_version:
+        failures.append(f"device_version does not identify OpenCL 3.0 CUDA-sm_89-v6: {device.device_version}")
     return failures
 
 
@@ -88,8 +110,32 @@ def validate_capabilities(device: DeviceSnapshot) -> list[str]:
         failures.append(f"extensions: expected {sorted(EXPECTED_EXTENSIONS)}, found {sorted(extensions)}")
     if versioned != extensions:
         failures.append(f"versioned extensions differ from extension string: {sorted(versioned)}")
+    if frozenset(device.extension_versions) != EXPECTED_EXTENSION_VERSIONS:
+        failures.append(
+            "extension versions: expected "
+            f"{sorted(EXPECTED_EXTENSION_VERSIONS)}, found {sorted(device.extension_versions)}"
+        )
     if features != EXPECTED_FEATURES:
         failures.append(f"features: expected {sorted(EXPECTED_FEATURES)}, found {sorted(features)}")
+    if frozenset(device.feature_versions) != EXPECTED_FEATURE_VERSIONS:
+        failures.append(
+            "feature versions: expected "
+            f"{sorted(EXPECTED_FEATURE_VERSIONS)}, found {sorted(device.feature_versions)}"
+        )
+    if device.integer_dot_product_capabilities != 3:
+        failures.append(
+            "integer_dot_product_capabilities: expected packed and unpacked (3), "
+            f"found {device.integer_dot_product_capabilities}"
+        )
+    if any(device.integer_dot_product_acceleration_8bit):
+        failures.append("8-bit integer dot product acceleration was not established")
+    if any(device.integer_dot_product_acceleration_4x8bit_packed):
+        failures.append("packed integer dot product acceleration was not established")
+    if device.kernel_clock_capabilities != 7:
+        failures.append(
+            "kernel_clock_capabilities: expected device, work-group, and "
+            f"sub-group scopes (7), found {device.kernel_clock_capabilities}"
+        )
     if device.half_fp_config != 0 or device.half_fp_query_error != 0:
         failures.append(
             "CL_DEVICE_HALF_FP_CONFIG must return zero successfully when cl_khr_fp16 "

@@ -1940,7 +1940,7 @@ static const cl_name_version OPENCL_EXTENSIONS[]
       { CL_MAKE_VERSION (1, 0, 0), "cl_khr_local_int32_extended_atomics" },
       { CL_MAKE_VERSION (1, 0, 0), "cl_khr_int64_base_atomics" },
       { CL_MAKE_VERSION (1, 0, 0), "cl_khr_int64_extended_atomics" },
-      { CL_MAKE_VERSION (1, 0, 0), "cl_khr_integer_dot_product" },
+      { CL_MAKE_VERSION (2, 0, 0), "cl_khr_integer_dot_product" },
       { CL_MAKE_VERSION (1, 0, 0), "cl_khr_subgroups" },
       { CL_MAKE_VERSION (1, 0, 0), "cl_khr_subgroup_extended_types" },
       { CL_MAKE_VERSION (1, 0, 0), "cl_khr_subgroup_non_uniform_vote" },

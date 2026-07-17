@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import re
@@ -23,6 +24,10 @@ FAILURE_PATTERN = re.compile(
     r"Segmentation fault|core dumped|CUDA_ERROR_|Cannot select)",
     re.MULTILINE,
 )
+OPTIONAL_FEATURE_DIAGNOSTIC_PATTERN = re.compile(
+    r"^ERROR: Subtest .+ tests a feature not supported by the device version! "
+    r"\(from .+:\d+\)$"
+)
 SUITE_SKIP_PATTERNS = (
     re.compile(r"^\s*SKIPPED(?:\s+\d+\s+of\s+\d+\s+tests|:)", re.MULTILINE),
     re.compile(r"^\s*Test skipped while initialization\s*$", re.MULTILINE),
@@ -34,7 +39,7 @@ GPU_IDLE_WAIT_SECONDS = 10
 GPU_IDLE_POLL_SECONDS = 0.2
 DEFAULT_CTS_TIMEOUT_SECONDS = 900
 DEFAULT_SUITE = "quick"
-KNOWN_SUITES = (DEFAULT_SUITE, "expanded", "goal3")
+KNOWN_SUITES = (DEFAULT_SUITE, "expanded", "goal3", "goal4")
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,7 @@ class TestResult:
     duration_seconds: float
     timed_out: bool
     failure_markers: tuple[str, ...]
+    optional_feature_diagnostics: tuple[str, ...]
     selected_test_count: int
     applicable_pass_count: int
     not_supported_count: int
@@ -103,6 +109,12 @@ def suite_csv_path(
 
 def selected_cache_dir(output_dir: Path, custom_cache: Path | None) -> Path:
     return (custom_cache or output_dir / "kernel-cache").resolve()
+
+
+def source_checkout_paths(script_path: Path) -> tuple[Path, Path]:
+    source_dir = script_path.resolve().parents[3]
+    cts_source = source_dir.parent / "third_party/OpenCL-CTS"
+    return source_dir, cts_source
 
 
 def parse_args() -> RunnerConfig:
@@ -285,8 +297,7 @@ def record_environment(
     environment: dict[str, str],
     device_report: dict[str, object],
 ) -> None:
-    source_dir = Path(__file__).resolve().parents[3]
-    cts_source = config.build_dir / "examples/conformance/src/conformance"
+    source_dir, cts_source = source_checkout_paths(Path(__file__))
     compute_info = config.cts_dir / "computeinfo/test_computeinfo"
     commands = {
         "gpu": (
@@ -329,7 +340,20 @@ def terminate_process_group(process: subprocess.Popen[str]) -> None:
 
 
 def marker_lines(output: str) -> tuple[str, ...]:
-    return tuple(line for line in output.splitlines() if FAILURE_PATTERN.search(line))
+    return tuple(
+        line
+        for line in output.splitlines()
+        if FAILURE_PATTERN.search(line)
+        and OPTIONAL_FEATURE_DIAGNOSTIC_PATTERN.fullmatch(line) is None
+    )
+
+
+def optional_feature_diagnostics(output: str) -> tuple[str, ...]:
+    return tuple(
+        line
+        for line in output.splitlines()
+        if OPTIONAL_FEATURE_DIAGNOSTIC_PATTERN.fullmatch(line) is not None
+    )
 
 
 def suite_was_skipped(output: str) -> bool:
@@ -405,6 +429,7 @@ def run_test(
         duration_seconds=duration,
         timed_out=timed_out,
         failure_markers=markers,
+        optional_feature_diagnostics=optional_feature_diagnostics(combined_output),
         selected_test_count=assessment.selected_test_count,
         applicable_pass_count=assessment.applicable_pass_count,
         not_supported_count=assessment.not_supported_count,
@@ -422,6 +447,16 @@ def write_summary(config: RunnerConfig, results: list[TestResult]) -> None:
     report = {"counts": counts, "results": [asdict(result) for result in results]}
     path = config.output_dir / "summary.json"
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_checksums(output_dir: Path) -> None:
+    checksums = {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(output_dir.iterdir())
+        if path.is_file() and path.name != "sha256sums.json"
+    }
+    path = output_dir / "sha256sums.json"
+    path.write_text(json.dumps(checksums, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -453,6 +488,7 @@ def main() -> int:
     remaining_processes = wait_for_gpu_idle()
     if remaining_processes:
         raise RuntimeError("GPU processes remain after CTS:\n" + "\n".join(remaining_processes))
+    write_checksums(config.output_dir)
     return 1 if any(result.status in {"fail", "crash", "timeout"} for result in results) else 0
 
 

@@ -32,6 +32,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 
 #define BUF_SIZE 16
 
@@ -42,6 +43,11 @@ static char GetAddrSourceCode[] = R"raw(
                           __global ulong* addr) {
     for (int i = 0; i < BUF_SIZE; ++i)
       buffer[i] += 1;
+    *addr = (ulong)buffer;
+  }
+
+  __kernel void get_one_addr (__global int *buffer,
+                              __global ulong* addr) {
     *addr = (ulong)buffer;
   }
 )raw";
@@ -78,6 +84,65 @@ void *getDeviceAddressFromHost(cl::Buffer &Buf) {
   }
 
   return (void *)Addr;
+}
+
+struct MultiQueueFixture {
+  const cl::Context &Context;
+  const cl::Device &Device;
+  const cl::Program &Program;
+  cl::CommandQueue &ProducerQueue;
+};
+
+static bool testMultiQueueLifetime(const MultiQueueFixture &Fixture) {
+  constexpr int ExpectedValue = 4321;
+  cl::CommandQueue ConsumerQueue(Fixture.Context, Fixture.Device, 0);
+  cl::Kernel Kernel(Fixture.Program, "indirect_access");
+  cl::Buffer Output(Fixture.Context, CL_MEM_WRITE_ONLY, sizeof(cl_int));
+  cl::Event KernelEvent;
+
+  {
+    cl::Buffer Payload(
+        Fixture.Context,
+        (cl_mem_flags)(CL_MEM_READ_WRITE | CL_MEM_DEVICE_PRIVATE_ADDRESS_EXT),
+        sizeof(cl_int));
+    void *Address = getDeviceAddressFromHost(Payload);
+    cl::Buffer AddressBuffer(
+        Fixture.Context,
+        (cl_mem_flags)(CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR),
+        sizeof(Address), &Address);
+    Kernel.setArg(0, AddressBuffer);
+    Kernel.setArg(1, Output);
+    cl_int Err = ::clSetKernelExecInfo(Kernel.get(),
+                                       CL_KERNEL_EXEC_INFO_DEVICE_PTRS_EXT,
+                                       sizeof(Address), &Address);
+    if (Err != CL_SUCCESS) {
+      std::cerr << "Multi-queue clSetKernelExecInfo failed: " << Err << '\n';
+      return false;
+    }
+
+    cl::Event WriteEvent;
+    Fixture.ProducerQueue.enqueueWriteBuffer(
+        Payload, CL_FALSE, 0, sizeof(ExpectedValue), &ExpectedValue, nullptr,
+        &WriteEvent);
+    std::vector<cl::Event> Dependencies{WriteEvent};
+    ConsumerQueue.enqueueNDRangeKernel(Kernel, cl::NullRange, cl::NDRange(1),
+                                       cl::NullRange, &Dependencies,
+                                       &KernelEvent);
+    if (Address != getDeviceAddressFromHost(Payload)) {
+      std::cerr << "Device address changed after cross-queue migration\n";
+      return false;
+    }
+  }
+
+  int ActualValue = 0;
+  std::vector<cl::Event> Dependencies{KernelEvent};
+  ConsumerQueue.enqueueReadBuffer(Output, CL_TRUE, 0, sizeof(ActualValue),
+                                  &ActualValue, &Dependencies);
+  if (ActualValue != ExpectedValue) {
+    std::cerr << "Released BDA buffer was not retained through queued use\n";
+    return false;
+  }
+  return true;
 }
 
 int main(void) {
@@ -203,6 +268,53 @@ int main(void) {
       return EXIT_FAILURE;
     }
 
+    constexpr size_t SubBufferOrigin = sizeof(cl_int);
+    cl_buffer_region SubBufferRegion = {
+        SubBufferOrigin, BUF_SIZE * sizeof(cl_int) - SubBufferOrigin};
+    cl::Buffer SubBuffer = PinnedCLBuffer.createSubBuffer(
+        CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &SubBufferRegion);
+    void *ParentAddress = getDeviceAddressFromHost(PinnedCLBuffer);
+    void *SubBufferAddress = getDeviceAddressFromHost(SubBuffer);
+    void *ExpectedSubBufferAddress =
+        static_cast<char *>(ParentAddress) + SubBufferOrigin;
+    if (SubBufferAddress != ExpectedSubBufferAddress) {
+      std::cerr << "Sub-buffer device address does not equal parent address "
+                   "plus origin"
+                << std::endl;
+      return EXIT_FAILURE;
+    }
+
+    cl_mem_flags SubBufferFlags = SubBuffer.getInfo<CL_MEM_FLAGS>();
+    if ((SubBufferFlags & CL_MEM_DEVICE_PRIVATE_ADDRESS_EXT) == 0) {
+      std::cerr << "Sub-buffer did not inherit the device-address flag"
+                << std::endl;
+      return EXIT_FAILURE;
+    }
+
+    cl::Kernel GetOneAddrKernel(Program, "get_one_addr");
+    GetOneAddrKernel.setArg(0, SubBuffer);
+    GetOneAddrKernel.setArg(1, AddrCLBuffer);
+    Queue.enqueueNDRangeKernel(GetOneAddrKernel, cl::NullRange, cl::NDRange(1),
+                               cl::NullRange);
+    Queue.enqueueReadBuffer(AddrCLBuffer, CL_TRUE, 0, sizeof(cl_ulong),
+                            &DeviceAddrFromKernel);
+    if (SubBufferAddress != (void *)DeviceAddrFromKernel) {
+      std::cerr << "Sub-buffer API and kernel addresses do not match"
+                << std::endl;
+      return EXIT_FAILURE;
+    }
+
+    cl::Buffer AllocHostCLBuffer = cl::Buffer(
+        Context,
+        (cl_mem_flags)(CL_MEM_READ_WRITE | CL_MEM_DEVICE_PRIVATE_ADDRESS_EXT |
+                       CL_MEM_ALLOC_HOST_PTR),
+        (size_t)BUF_SIZE * sizeof(cl_int));
+    if (getDeviceAddressFromHost(AllocHostCLBuffer) == nullptr) {
+      std::cerr << "CL_MEM_ALLOC_HOST_PTR device-address buffer has no address"
+                << std::endl;
+      return EXIT_FAILURE;
+    }
+
     // Test a buffer which doesn't have any hostptr associated with it.
     cl::Buffer PinnedCLBufferNoHostCopy = cl::Buffer(
         Context, CL_MEM_DEVICE_PRIVATE_ADDRESS_EXT, BUF_SIZE * sizeof(cl_int));
@@ -292,6 +404,10 @@ int main(void) {
                 << " expected: " << DataIn << "\n";
       return EXIT_FAILURE;
     }
+
+    MultiQueueFixture Fixture{Context, SuitableDevices[0], Program, Queue};
+    if (!testMultiQueueLifetime(Fixture))
+      return EXIT_FAILURE;
 
     // Test using clSetKernelArgDevicePointerEXT to pass pointers to
     // inside a buffer.

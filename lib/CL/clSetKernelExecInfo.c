@@ -149,16 +149,27 @@ POname(clSetKernelExecInfo)(cl_kernel kernel,
                   }
               }
             if (program_device_i == CL_UINT_MAX)
-              return CL_SUCCESS;
+              {
+                pocl_reset_indirect_ptrs (
+                  kernel, ptrs, param_value_size / sizeof (void *));
+                return CL_SUCCESS;
+              }
             POCL_RETURN_ERROR_ON (
                 (realdev->ops->set_kernel_exec_info_ext == NULL),
                 CL_INVALID_OPERATION,
                 "This device doesn't support clSetKernelExecInfo\n");
-            return realdev->ops->set_kernel_exec_info_ext (
+            cl_int ret = realdev->ops->set_kernel_exec_info_ext (
                 realdev, program_device_i, kernel,
                 CL_KERNEL_EXEC_INFO_DEVICE_PTRS_EXT, param_value_size,
                 param_value);
+            if (ret == CL_SUCCESS)
+              pocl_reset_indirect_ptrs (
+                kernel, ptrs, param_value_size / sizeof (void *));
+            return ret;
           }
+
+        pocl_reset_indirect_ptrs (
+          kernel, ptrs, param_value_size / sizeof (void *));
         return CL_SUCCESS;
       }
 

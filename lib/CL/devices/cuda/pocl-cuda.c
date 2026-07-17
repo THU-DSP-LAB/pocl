@@ -81,8 +81,8 @@ cudnnHandle_t cudnn;
   }
 
 #define CUDA_BUILTIN_KERNELS 6
-#define CUDA_LATEST_CONFORMANCE_VERSION "v2026-07-14-00"
-#define CUDA_BINARY_FORMAT_VERSION "5"
+#define CUDA_LATEST_CONFORMANCE_VERSION "v2026-07-17-00"
+#define CUDA_BINARY_FORMAT_VERSION "6"
 static const char *cuda_builtin_kernels[CUDA_BUILTIN_KERNELS]
     = { "pocl.mul.i32",
         "pocl.add.i32",

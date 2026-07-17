@@ -91,7 +91,7 @@ with a few exceptions; these are marked Unsupported in the table.
 |:----------|:----------:|:----------:|:----:|:--------:|:------:|
 | cl_exp_tensor | :yellow_circle: :two: | :yellow_circle: :one: | | | |
 | cl_exp_defined_builtin_kernels | :yellow_circle: :two: | :yellow_circle: :one: | | | |
-| cl_ext_buffer_device_address | :green_circle: | :yellow_circle: :one: | | | :red_circle: |
+| cl_ext_buffer_device_address | :green_circle: | :yellow_circle: :one: | :green_circle: | | :red_circle: |
 | cl_ext_float_atomics | :green_circle: | :yellow_circle: :one: | :green_circle: | | |
 | cl_intel_command_queue_families | | | | | :red_circle: |
 | cl_intel_device_attribute_query | :red_circle: | :yellow_circle: :one: | | | |
@@ -107,7 +107,7 @@ with a few exceptions; these are marked Unsupported in the table.
 | cl_khr_3d_image_writes | :green_circle: | :yellow_circle: :two: | | | |
 | cl_khr_byte_addressable_store | :green_circle: | :green_circle: | :green_circle: | | |
 | cl_khr_device_uuid | :green_circle: | :green_circle: | | | :red_circle: |
-| cl_khr_extended_bit_ops | :yellow_circle: :six: | | | | |
+| cl_khr_extended_bit_ops | :yellow_circle: :six: | | :green_circle: | | |
 | cl_khr_global_int32_base_atomics | :green_circle: | :green_circle: | :green_circle: | | |
 | cl_khr_global_int32_extended_atomics | :green_circle: | :green_circle: | :green_circle: | | |
 | cl_khr_local_int32_base_atomics | :green_circle: | :green_circle: | :green_circle: | | |
@@ -117,8 +117,8 @@ with a few exceptions; these are marked Unsupported in the table.
 | cl_khr_suggested_local_work_size | :green_circle: | | | | |
 | cl_khr_pci_bus_info | :red_circle: | :yellow_circle: :one: | | | |
 | cl_khr_depth_images | :red_circle: | :yellow_circle: :two: | | | |
-| cl_khr_integer_dot_product | :green_circle: | :yellow_circle: :one: | | | |
-| cl_khr_kernel_clock | :yellow_circle: :two: :eight: | | | | |
+| cl_khr_integer_dot_product | :green_circle: | :yellow_circle: :one: | :green_circle: | | |
+| cl_khr_kernel_clock | :yellow_circle: :two: :eight: | | :green_circle: | | |
 | cl_khr_command_buffer | :yellow_circle: :two: | :yellow_circle: :two: | | | |
 | cl_khr_command_buffer_multi_device | :yellow_circle: :two: | | | | | |
 | cl_khr_command_buffer_mutable_dispatch | :yellow_circle: :two: | | | | |
@@ -158,11 +158,11 @@ supported by the device.
 | __opencl_c_atomic_scope_all_devices | :green_circle: | :yellow_circle: :one: | | | |
 | __opencl_c_generic_address_space | :green_circle: | :green_circle: | :green_circle:  | | |
 | __opencl_c_work_group_collective_functions | :green_circle: | :green_circle:  | | | |
-| __opencl_c_integer_dot_product_input_4x8bit |  :green_circle: | :yellow_circle: :two: :one: | | | |
-| __opencl_c_integer_dot_product_input_4x8bit_packed | :green_circle: | :yellow_circle: :two: :one: | | | |
-| __opencl_c_kernel_clock_scope_device | :yellow_circle: :two: :eight: | | | | |
-| __opencl_c_kernel_clock_scope_work_group | :yellow_circle: :two: :eight: | | | | |
-| __opencl_c_kernel_clock_scope_sub_group | :yellow_circle: :two: :eight: | | | | |
+| __opencl_c_integer_dot_product_input_4x8bit |  :green_circle: | :yellow_circle: :two: :one: | :green_circle: | | |
+| __opencl_c_integer_dot_product_input_4x8bit_packed | :green_circle: | :yellow_circle: :two: :one: | :green_circle: | | |
+| __opencl_c_kernel_clock_scope_device | :yellow_circle: :two: :eight: | | :green_circle: | | |
+| __opencl_c_kernel_clock_scope_work_group | :yellow_circle: :two: :eight: | | :green_circle: | | |
+| __opencl_c_kernel_clock_scope_sub_group | :yellow_circle: :two: :eight: | | :green_circle: | | |
 | __opencl_c_subgroups | :yellow_circle: :two: | :yellow_circle: :two: :one: | :yellow_circle: :two: | | |
 | __opencl_c_read_write_images | :yellow_circle: :two: | :yellow_circle: :one: | | | |
 | __opencl_c_program_scope_global_variables | :yellow_circle: :two: | :yellow_circle: :two: | :green_circle:  | | |
@@ -191,9 +191,11 @@ supported by the device.
    * LLVM >= 19, ENABLE_CONFORMANCE=OFF, Linux, CpuArch != i386
 5. The `cl_khr_fp64` extension is enabled by default on all CPU architectures,
    unless explicitly disabled.
-6. The `cl_khr_extended_bit_ops` is only supported with LLVM 20+.
+6. The CPU implementation of `cl_khr_extended_bit_ops` requires LLVM 20+;
+   CUDA uses a width-correct implementation with LLVM 18.
 7. The `cl_khr_fp16` is supported on CUDA devices with Compute Capability >= 6.0 only.
-8. Kernel clock functionality is only supported on native x86 CPU builds.
+8. Kernel clock functionality is supported on native x86 CPU builds and on
+   CUDA devices through the PTX device-wide global timer.
 
 
 ## Supported CI environments

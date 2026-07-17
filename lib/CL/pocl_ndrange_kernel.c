@@ -377,6 +377,9 @@ pocl_kernel_collect_mem_objs (
           = pocl_find_raw_ptr_with_vm_ptr (context, n->ptr);
 
         if (svm_ptr == NULL)
+          svm_ptr = pocl_find_raw_ptr_with_dev_ptr (context, realdev, n->ptr);
+
+        if (svm_ptr == NULL)
           {
             POCL_MSG_PRINT_MEMORY ("Couldn't find the shadow cl_mem for an "
                                    "clSetKernelExecInfo-set SVM ptr, "

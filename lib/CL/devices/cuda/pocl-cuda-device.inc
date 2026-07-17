@@ -240,6 +240,18 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
                           | CL_FP_ROUND_TO_INF | CL_FP_FMA | CL_FP_INF_NAN
                           | CL_FP_DENORM;
 
+  dev->dot_product_caps
+      = CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_KHR
+        | CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_PACKED_KHR;
+  memset (&dev->dot_product_accel_props_8bit, 0,
+          sizeof (dev->dot_product_accel_props_8bit));
+  memset (&dev->dot_product_accel_props_4x8bit, 0,
+          sizeof (dev->dot_product_accel_props_4x8bit));
+
+  dev->kernel_clock_caps = CL_DEVICE_KERNEL_CLOCK_SCOPE_DEVICE_KHR
+                           | CL_DEVICE_KERNEL_CLOCK_SCOPE_WORK_GROUP_KHR
+                           | CL_DEVICE_KERNEL_CLOCK_SCOPE_SUB_GROUP_KHR;
+
   dev->local_mem_type = CL_LOCAL;
 
   if (ret != CL_INVALID_DEVICE)

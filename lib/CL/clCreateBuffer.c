@@ -201,66 +201,54 @@ pocl_create_memobject (cl_context context,
       POCL_MSG_PRINT_MEMORY (
         "Trying driver allocation for cl_ext_buffer_device_address\n");
       unsigned i;
-      void *ptr = NULL;
       for (i = 0; i < context->num_devices; ++i)
         {
           cl_device_id dev = context->devices[i];
           assert (dev->ops->alloc_mem_obj != NULL);
-          int err = 0;
+          int err = CL_SUCCESS;
 
           if (mem->device_ptrs[dev->global_mem_id].mem_ptr == NULL)
             {
               err = dev->ops->alloc_mem_obj (dev, mem, host_ptr);
-              ptr = mem->device_ptrs[dev->global_mem_id].mem_ptr;
               POCL_GOTO_ERROR_ON (err != CL_SUCCESS, CL_OUT_OF_RESOURCES,
                                   "Out of device memory?");
-
-              pocl_raw_ptr *item = calloc (1, sizeof (pocl_raw_ptr));
-              POCL_RETURN_ERROR_ON ((item == NULL), NULL,
-                                    "out of host memory\n");
-
-	      size_t mem_size = size;
-	      if (strcmp(dev->ops->device_name, "remote") == 0)
-		{
-		  /* A work-around for test_svm case for remote
-		   * devices which currently doesn't implement BDA
-		   * extension properly. It uses mem->id as .mem_ptr
-		   * address which does not work out for BDA extension
-		   * well. Buffers created back-to-back will likely
-		   * have their addresses overlapping (which is caught
-		   * by pocl_raw_ptr_set_insert() ahead) which means
-		   * when we can't tell which buffer a BDA pointer is
-		   * derived from in clSetKernelArgDevicePointerEXT().
-		   *
-		   * The following work-around gets past the
-		   * pocl_raw_ptr_set_insert() call
-		   * clSetKernelArgDevicePointerEXT() should work on
-		   * BDA pointers pointing to the beginning of the
-		   * buffers but offseted ones not.
-		   */
-		  mem_size = 1;
-		}
-
-              POCL_LOCK_OBJ (context);
-              item->vm_ptr = NULL;
-              item->dev_ptr = ptr;
-              item->device = dev;
-              item->size = mem_size;
-              item->shadow_cl_mem = mem;
-              int inserted = pocl_raw_ptr_set_insert (context->raw_ptrs, item);
-              POCL_UNLOCK_OBJ (context);
-
-              if (!inserted) {
-                  POCL_MEM_FREE (item);
-                  goto ERROR;
-              }
-
-              POCL_MSG_PRINT_MEMORY (
-                "Registered a cl_ext_buffer_device_address"
-                " allocation with address '%p'.\n",
-                ptr);
-              mem->device_ptrs[dev->global_mem_id].device_addr = ptr;
             }
+
+          void *ptr = mem->device_ptrs[dev->global_mem_id].mem_ptr;
+          POCL_GOTO_ERROR_ON (ptr == NULL, CL_MEM_OBJECT_ALLOCATION_FAILURE,
+                              "Device allocation returned no address");
+
+          pocl_raw_ptr *item = calloc (1, sizeof (pocl_raw_ptr));
+          POCL_GOTO_ERROR_ON (item == NULL, CL_OUT_OF_HOST_MEMORY,
+                              "out of host memory\n");
+
+          size_t mem_size = size;
+          if (strcmp (dev->ops->device_name, "remote") == 0)
+            {
+              /* The remote driver uses overlapping synthetic addresses. */
+              mem_size = 1;
+            }
+
+          POCL_LOCK_OBJ (context);
+          item->vm_ptr = NULL;
+          item->dev_ptr = ptr;
+          item->device = dev;
+          item->size = mem_size;
+          item->shadow_cl_mem = mem;
+          int inserted = pocl_raw_ptr_set_insert (context->raw_ptrs, item);
+          POCL_UNLOCK_OBJ (context);
+
+          if (!inserted)
+            {
+              POCL_MEM_FREE (item);
+              goto ERROR;
+            }
+
+          POCL_MSG_PRINT_MEMORY (
+            "Registered a cl_ext_buffer_device_address"
+            " allocation with address '%p'.\n",
+            ptr);
+          mem->device_ptrs[dev->global_mem_id].device_addr = ptr;
         }
     }
 

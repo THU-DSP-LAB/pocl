@@ -34,6 +34,18 @@ list(APPEND KERNEL_SOURCES
   half_sin.cl half_sqrt.cl half_tan.cl
   svm_atomics.cl svm_atomics_host.cl)
 
+if(CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_integer_dot_product")
+  list(APPEND KERNEL_SOURCES integer_dot_product.cl)
+endif()
+
+if(CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_extended_bit_ops")
+  list(APPEND KERNEL_SOURCES extended_bitops.cl)
+endif()
+
+if(CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_kernel_clock")
+  list(APPEND KERNEL_SOURCES cuda/kernel_clock.ll)
+endif()
+
 foreach(FILE
   async_work_group_copy.cl async_work_group_strided_copy.cl
   get_global_id.c get_global_size.c get_group_id.c

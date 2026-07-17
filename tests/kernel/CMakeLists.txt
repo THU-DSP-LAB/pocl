@@ -103,7 +103,7 @@ add_test_pocl(NAME "kernel/test_frexp_modf"
 add_test_pocl(NAME "kernel/test_fp16_math_builtins"
               COMMAND "kernel" "test_fp16_math_builtins")
 
-if(HOST_CPU_ENABLE_CL_KHR_KERNEL_CLOCK)
+if(HOST_CPU_ENABLE_CL_KHR_KERNEL_CLOCK OR ENABLE_CUDA)
   add_test_pocl(NAME "kernel/test_kernel_clock"
                 COMMAND "kernel" "test_kernel_clock")
 endif()
@@ -154,7 +154,7 @@ foreach(VARIANT ${VARIANTS})
       DEPENDS "pocl_version_check")
 endforeach()
 
-if(HOST_CPU_ENABLE_CL_KHR_KERNEL_CLOCK)
+if(HOST_CPU_ENABLE_CL_KHR_KERNEL_CLOCK OR ENABLE_CUDA)
   foreach(VARIANT ${VARIANTS})
     set_tests_properties("kernel/test_kernel_clock_${VARIANT}"
       PROPERTIES
@@ -357,6 +357,7 @@ set_property(TEST
   "kernel/test_shuffle_ulong_loopvec"
   "kernel/test_shuffle_double_loopvec"
   "kernel/test_as_type_loopvec"
+  "kernel/test_kernel_clock_loopvec"
   "kernel/test_sizeof_uint_loopvec"
   APPEND PROPERTY LABELS "cuda")
 endif()

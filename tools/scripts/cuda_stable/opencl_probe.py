@@ -33,6 +33,10 @@ CL_DEVICE_GENERIC_ADDRESS_SPACE_SUPPORT = 0x1069
 CL_DEVICE_OPENCL_C_FEATURES = 0x106F
 CL_DEVICE_PIPE_SUPPORT = 0x1071
 CL_DEVICE_LATEST_CONFORMANCE_VERSION_PASSED = 0x1072
+CL_DEVICE_INTEGER_DOT_PRODUCT_CAPABILITIES_KHR = 0x1073
+CL_DEVICE_INTEGER_DOT_PRODUCT_ACCELERATION_PROPERTIES_8BIT_KHR = 0x1074
+CL_DEVICE_INTEGER_DOT_PRODUCT_ACCELERATION_PROPERTIES_4X8BIT_PACKED_KHR = 0x1075
+CL_DEVICE_KERNEL_CLOCK_CAPABILITIES_KHR = 0x1076
 
 
 class NameVersion(ctypes.Structure):
@@ -40,6 +44,24 @@ class NameVersion(ctypes.Structure):
         ("version", ctypes.c_uint32),
         ("name", ctypes.c_char * CL_NAME_VERSION_MAX_NAME_SIZE),
     ]
+
+
+class DotProductAccelerationProperties(ctypes.Structure):
+    _fields_ = [
+        ("signed_accelerated", ctypes.c_uint),
+        ("unsigned_accelerated", ctypes.c_uint),
+        ("mixed_signedness_accelerated", ctypes.c_uint),
+        ("accumulating_saturating_signed_accelerated", ctypes.c_uint),
+        ("accumulating_saturating_unsigned_accelerated", ctypes.c_uint),
+        ("accumulating_saturating_mixed_signedness_accelerated", ctypes.c_uint),
+    ]
+
+
+def decode_version(version: int) -> str:
+    major = version >> 22
+    minor = (version >> 12) & 0x3FF
+    patch = version & 0xFFF
+    return f"{major}.{minor}.{patch}"
 
 
 @dataclass(frozen=True)
@@ -51,7 +73,9 @@ class DeviceSnapshot:
     opencl_c_version: str
     extensions: tuple[str, ...]
     versioned_extensions: tuple[str, ...]
+    extension_versions: tuple[str, ...]
     features: tuple[str, ...]
+    feature_versions: tuple[str, ...]
     il_version: str
     latest_conformance: str
     image_support: int
@@ -69,6 +93,10 @@ class DeviceSnapshot:
     non_uniform_support: int
     generic_address_support: int
     pipe_support: int
+    integer_dot_product_capabilities: int
+    integer_dot_product_acceleration_8bit: tuple[int, ...]
+    integer_dot_product_acceleration_4x8bit_packed: tuple[int, ...]
+    kernel_clock_capabilities: int
 
 
 class OpenCLProbe:
@@ -176,6 +204,21 @@ class OpenCLProbe:
         return (int(value.value), error) if error == CL_SUCCESS else (None, error)
 
     def names(self, parameter: int) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                item.name.decode("utf-8") for item in self.name_versions(parameter)
+            )
+        )
+
+    def named_versions(self, parameter: int) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                f"{item.name.decode('utf-8')}@{decode_version(item.version)}"
+                for item in self.name_versions(parameter)
+            )
+        )
+
+    def name_versions(self, parameter: int) -> tuple[NameVersion, ...]:
         size = ctypes.c_size_t()
         self._check(
             self.api.clGetDeviceInfo(self.device, parameter, 0, None, ctypes.byref(size)),
@@ -189,7 +232,23 @@ class OpenCLProbe:
             self.api.clGetDeviceInfo(self.device, parameter, size, values, None),
             f"clGetDeviceInfo({parameter:#x}, value)",
         )
-        return tuple(sorted(item.name.decode("utf-8") for item in values))
+        return tuple(values)
+
+    def structure_values(
+        self, parameter: int, structure_type: type[ctypes.Structure]
+    ) -> tuple[int, ...]:
+        value = structure_type()
+        self._check(
+            self.api.clGetDeviceInfo(
+                self.device,
+                parameter,
+                ctypes.sizeof(value),
+                ctypes.byref(value),
+                None,
+            ),
+            f"clGetDeviceInfo({parameter:#x})",
+        )
+        return tuple(int(getattr(value, field)) for field, _ in value._fields_)
 
 
 def snapshot(library: Path) -> DeviceSnapshot:
@@ -206,7 +265,9 @@ def snapshot(library: Path) -> DeviceSnapshot:
         opencl_c_version=probe.string(CL_DEVICE_OPENCL_C_VERSION),
         extensions=tuple(sorted(probe.string(CL_DEVICE_EXTENSIONS).split())),
         versioned_extensions=probe.names(CL_DEVICE_EXTENSIONS_WITH_VERSION),
+        extension_versions=probe.named_versions(CL_DEVICE_EXTENSIONS_WITH_VERSION),
         features=probe.names(CL_DEVICE_OPENCL_C_FEATURES),
+        feature_versions=probe.named_versions(CL_DEVICE_OPENCL_C_FEATURES),
         il_version=probe.string(CL_DEVICE_IL_VERSION),
         latest_conformance=probe.string(CL_DEVICE_LATEST_CONFORMANCE_VERSION_PASSED),
         image_support=probe.scalar(CL_DEVICE_IMAGE_SUPPORT, uint),
@@ -232,4 +293,18 @@ def snapshot(library: Path) -> DeviceSnapshot:
             CL_DEVICE_GENERIC_ADDRESS_SPACE_SUPPORT, uint
         ),
         pipe_support=probe.scalar(CL_DEVICE_PIPE_SUPPORT, uint),
+        integer_dot_product_capabilities=probe.scalar(
+            CL_DEVICE_INTEGER_DOT_PRODUCT_CAPABILITIES_KHR, ulong
+        ),
+        integer_dot_product_acceleration_8bit=probe.structure_values(
+            CL_DEVICE_INTEGER_DOT_PRODUCT_ACCELERATION_PROPERTIES_8BIT_KHR,
+            DotProductAccelerationProperties,
+        ),
+        integer_dot_product_acceleration_4x8bit_packed=probe.structure_values(
+            CL_DEVICE_INTEGER_DOT_PRODUCT_ACCELERATION_PROPERTIES_4X8BIT_PACKED_KHR,
+            DotProductAccelerationProperties,
+        ),
+        kernel_clock_capabilities=probe.scalar(
+            CL_DEVICE_KERNEL_CLOCK_CAPABILITIES_KHR, ulong
+        ),
     )

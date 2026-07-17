@@ -2283,10 +2283,17 @@ if(ENABLE_CUDA)
   # NOTE: update README.md when changing the list
   set(CUDA_DEVICE_EXTENSIONS "cl_khr_byte_addressable_store cl_khr_global_int32_base_atomics \
     cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics \
-    cl_khr_local_int32_extended_atomics cl_nv_device_attribute_query")
+    cl_khr_local_int32_extended_atomics cl_khr_integer_dot_product \
+    cl_khr_extended_bit_ops cl_ext_buffer_device_address cl_khr_kernel_clock \
+    cl_nv_device_attribute_query")
 
   # CUDA device: OpenCL 3.0 optional features verified by the CUDA CTS baseline.
-  set(CUDA_DEVICE_FEATURES_30 "__opencl_c_int64")
+  set(CUDA_DEVICE_FEATURES_30 "__opencl_c_int64 \
+    __opencl_c_integer_dot_product_input_4x8bit \
+    __opencl_c_integer_dot_product_input_4x8bit_packed \
+    __opencl_c_kernel_clock_scope_device \
+    __opencl_c_kernel_clock_scope_work_group \
+    __opencl_c_kernel_clock_scope_sub_group")
 
   # FP64 is always enabled for CUDA, it should be available since Compute Capability 1.3
   set(CUDA_DEVICE_EXTENSIONS "${CUDA_DEVICE_EXTENSIONS} cl_khr_fp64")

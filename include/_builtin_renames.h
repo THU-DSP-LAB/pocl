@@ -1146,6 +1146,7 @@
 #define bitfield_insert _cl_bitfield_insert
 #define bitfield_extract_signed _cl_bitfield_extract_signed
 #define bitfield_extract_unsigned _cl_bitfield_extract_unsigned
+#define bit_reverse _cl_bit_reverse
 
 #define dot _cl_dot
 #define dot_acc_sat _cl_dot_acc_sat

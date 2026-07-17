@@ -29,10 +29,17 @@
   {                                                                           \
     if (count == 0)                                                           \
       return base;                                                            \
-    GTYPE mask1 = (count >= BITS) ? (GTYPE)(-1) : ~((GTYPE)(-1) << count);    \
-    insert = (insert & mask1) << offset;                                      \
-    GTYPE mask2 = ~(mask1 << offset);                                         \
-    return ((base & mask2) | insert);                                         \
+    union { GTYPE value; UGTYPE bits; } base_bits = { .value = base };         \
+    union { GTYPE value; UGTYPE bits; } insert_bits = { .value = insert };     \
+    UGTYPE field_mask = count == BITS                                         \
+                             ? (UGTYPE)(-1)                                   \
+                             : (((UGTYPE)1 << count) - (UGTYPE)1);             \
+    UGTYPE shifted_mask = field_mask << offset;                               \
+    union { GTYPE value; UGTYPE bits; } result = {                            \
+      .bits = (base_bits.bits & ~shifted_mask)                                \
+              | ((insert_bits.bits & field_mask) << offset)                   \
+    };                                                                         \
+    return result.value;                                                      \
   }
 
 IMPLEMENT_BITFIELD_INSERT (char, char, uchar, 8)
@@ -92,14 +99,22 @@ IMPLEMENT_BITFIELD_INSERT (ulong16, ulong, ulong16, 64))
   {                                                                           \
     if (count == 0)                                                           \
       return (GTYPE)0;                                                        \
-    base = base << (BITS - count - offset);                                   \
-    GTYPE signorzero = (base >> (BITS - 1)) ? (GTYPE)(-1) : (GTYPE)0;         \
-    return ((base ^ signorzero) >> (BITS - count)) ^ signorzero;              \
+    union { GTYPE value; UGTYPE bits; } source = { .value = base };            \
+    UGTYPE field_mask = count == BITS                                         \
+                             ? (UGTYPE)(-1)                                   \
+                             : (((UGTYPE)1 << count) - (UGTYPE)1);             \
+    UGTYPE value = (source.bits >> offset) & field_mask;                      \
+    UGTYPE sign_bit = (UGTYPE)1 << (count - 1);                               \
+    union { GTYPE value; UGTYPE bits; } result = {                            \
+      .bits = (value ^ sign_bit) - sign_bit                                   \
+    };                                                                         \
+    return result.value;                                                      \
   }                                                                           \
   GTYPE __attribute__ ((overloadable)) bitfield_extract_signed (              \
     UGTYPE base, uint offset, uint count)                                     \
   {                                                                           \
-    return bitfield_extract_signed (ASTYPE (base), offset, count);            \
+    union { GTYPE value; UGTYPE bits; } source = { .bits = base };             \
+    return bitfield_extract_signed (source.value, offset, count);             \
   }
 
 IMPLEMENT_BITFIELD_EXTRACT_SIGNED (char, as_char, uchar, 8)
@@ -134,13 +149,16 @@ IMPLEMENT_BITFIELD_EXTRACT_SIGNED (long16, as_long16, ulong16, 64))
   {                                                                           \
     if (count == 0)                                                           \
       return (UGTYPE)0;                                                       \
-    base = base << (BITS - count - offset);                                   \
-    return base >> (BITS - count);                                            \
+    UGTYPE field_mask = count == BITS                                         \
+                             ? (UGTYPE)(-1)                                   \
+                             : (((UGTYPE)1 << count) - (UGTYPE)1);             \
+    return (base >> offset) & field_mask;                                     \
   }                                                                           \
   UGTYPE __attribute__ ((overloadable)) bitfield_extract_unsigned (           \
     GTYPE base, uint offset, uint count)                                      \
   {                                                                           \
-    return bitfield_extract_unsigned (ASTYPE (base), offset, count);          \
+    union { GTYPE value; UGTYPE bits; } source = { .value = base };            \
+    return bitfield_extract_unsigned (source.bits, offset, count);            \
   }
 
 IMPLEMENT_BITFIELD_EXTRACT_UNSIGNED (char, as_uchar, uchar, 8)
@@ -169,4 +187,18 @@ IMPLEMENT_BITFIELD_EXTRACT_UNSIGNED (long4, as_ulong4, ulong4, 64)
 IMPLEMENT_BITFIELD_EXTRACT_UNSIGNED (long8, as_ulong8, ulong8, 64)
 IMPLEMENT_BITFIELD_EXTRACT_UNSIGNED (long16, as_ulong16, ulong16, 64))
 
-DEFINE_EXPR_G_G (bit_reverse, __builtin_elementwise_bitreverse (a))
+#define POCL_BIT_REVERSE_FALLBACK                                             \
+  ({                                                                          \
+    union { gtype value; ugtype bits; } source = { .value = a };              \
+    ugtype input = source.bits;                                               \
+    ugtype reversed = (ugtype)0;                                              \
+    for (uint bit = 0; bit < CHAR_BIT * sizeof (sgtype); ++bit)               \
+      {                                                                        \
+        reversed = (reversed << 1) | (input & (ugtype)1);                     \
+        input >>= 1;                                                          \
+      }                                                                        \
+    union { gtype value; ugtype bits; } result = { .bits = reversed };         \
+    result.value;                                                             \
+  })
+DEFINE_EXPR_G_G (bit_reverse, POCL_BIT_REVERSE_FALLBACK)
+#undef POCL_BIT_REVERSE_FALLBACK

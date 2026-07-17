@@ -3,19 +3,50 @@
 from __future__ import annotations
 
 import unittest
+import json
+import tempfile
 from pathlib import Path
 
+from opencl_probe import decode_version
 from run_cts_quick import (
     assess_output,
     classify_result,
     marker_lines,
+    optional_feature_diagnostics,
     selected_cache_dir,
+    source_checkout_paths,
     suite_csv_path,
     suite_was_skipped,
+    write_checksums,
 )
 
 
 class SuiteSelectionTests(unittest.TestCase):
+    def test_result_checksums_are_reproducible(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            (output / "result.log").write_bytes(b"goal4\n")
+            write_checksums(output)
+            checksums = json.loads((output / "sha256sums.json").read_text())
+            self.assertEqual(
+                checksums,
+                {
+                    "result.log":
+                    "979e576863e5323767da5abcbd2d0ad0d383969fe02d54188bf5bc68da7e5085"
+                },
+            )
+
+    def test_opencl_name_version_decoder(self) -> None:
+        encoded = (2 << 22) | (3 << 12) | 17
+        self.assertEqual(decode_version(encoded), "2.3.17")
+
+    def test_source_checkout_paths_use_vendored_cts(self) -> None:
+        source, cts = source_checkout_paths(
+            Path("/repo/pocl/tools/scripts/cuda_stable/run_cts_quick.py")
+        )
+        self.assertEqual(source, Path("/repo/pocl"))
+        self.assertEqual(cts, Path("/repo/third_party/OpenCL-CTS"))
+
     def test_cache_defaults_inside_output_directory(self) -> None:
         output = Path("results").resolve()
         self.assertEqual(selected_cache_dir(output, None), output / "kernel-cache")
@@ -47,6 +78,35 @@ class SuiteSelectionTests(unittest.TestCase):
             Path("/scripts"), Path("/build"), "goal3", custom_csv=None
         )
         self.assertEqual(path, Path("/scripts/opencl_conformance_tests_goal3.csv"))
+
+    def test_goal4_manifest_comes_from_script_tree(self) -> None:
+        path = suite_csv_path(
+            Path("/scripts"), Path("/build"), "goal4", custom_csv=None
+        )
+        self.assertEqual(path, Path("/scripts/opencl_conformance_tests_goal4.csv"))
+
+    def test_goal4_manifest_has_required_independent_entries(self) -> None:
+        manifest = Path(__file__).with_name("opencl_conformance_tests_goal4.csv")
+        entries = tuple(
+            line.strip()
+            for line in manifest.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        names = tuple(entry.split(",", 1)[0] for entry in entries)
+        self.assertEqual(len(entries), 5)
+        self.assertEqual(len(names), len(set(names)))
+        self.assertIn(
+            "Integer Ops All Registered,integer_ops/test_integer_ops", entries
+        )
+        self.assertIn(
+            "Buffer Device Address,extensions/cl_ext_buffer_device_address/"
+            "test_cl_ext_buffer_device_address",
+            entries,
+        )
+        self.assertIn(
+            "Kernel Clock,extensions/cl_khr_kernel_clock/test_cl_khr_kernel_clock",
+            entries,
+        )
 
     def test_custom_manifest_is_resolved(self) -> None:
         custom = Path("custom.csv")
@@ -134,6 +194,15 @@ PASSED 31 of 31 tests.
     def test_cts_error_is_failure(self) -> None:
         output = "ERROR: clBuildProgram failed!\nfoo FAILED\n"
         self.assertEqual(len(marker_lines(output)), 2)
+
+    def test_standard_optional_feature_diagnostic_is_auditable(self) -> None:
+        output = (
+            "ERROR: Subtest Device doesn't support CL_DEVICE_SVM_COARSE_GRAIN_BUFFER, "
+            "skipping tests a feature not supported by the device version! "
+            "(from example.cpp:185)\n"
+        )
+        self.assertEqual(marker_lines(output), ())
+        self.assertEqual(optional_feature_diagnostics(output), (output.strip(),))
 
     def test_expected_build_error_is_not_failure(self) -> None:
         output = (
