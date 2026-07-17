@@ -95,3 +95,37 @@ checks as quick. An
 arbitrary version-controlled manifest can be selected explicitly with
 `--csv PATH`. For a warm-cache repeat with a separate immutable result
 directory, pass the first run's cache explicitly with `--cache-dir PATH`.
+
+## CTS Goal 3 complete Conversions and Math
+
+Audit the fixed CTS function lists, device capability exclusions, and exact
+manifest partition before starting the long run:
+
+```sh
+tools/scripts/cuda_stable/cts_goal3_manifest.py \
+  --cts-dir build_cuda_stable/examples/conformance/src/conformance-build/test_conformance \
+  --install-dir build_cuda_stable/install \
+  --device-contract PATH/TO/device-contract.json
+```
+
+The Goal 3 manifest contains 105 continuous Conversions ranges covering test
+numbers 1 through 1045 exactly once, plus FP32 and FP64 shards for all 101
+applicable Math functions. Math shards retain the default scalar/v2/v3/v4/v8/v16
+coverage. `divide_cr` and `sqrt_cr` are recorded as capability N/A because the
+fixed device contract does not advertise correctly-rounded divide/sqrt.
+
+Run cold and warm acceptance passes with a watchdog sized for indivisible
+brute-force functions:
+
+```sh
+tools/scripts/cuda_stable/run_cts_quick.py \
+  --suite goal3 --timeout 43200 --output-dir PATH/TO/goal3-cold
+tools/scripts/cuda_stable/run_cts_quick.py \
+  --suite goal3 --timeout 43200 --output-dir PATH/TO/goal3-warm \
+  --cache-dir PATH/TO/goal3-cold/kernel-cache
+```
+
+The runner records applicable pass counts and per-test N/A names/reasons. A
+suite whose selected registered tests are all unsupported for one documented
+capability is classified as `skip`; mixed applicable/N/A suites remain `pass`.
+Timeouts, signals, nonzero exit codes, and failure markers take precedence.

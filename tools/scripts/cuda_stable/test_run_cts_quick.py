@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 
 from run_cts_quick import (
+    assess_output,
+    classify_result,
     marker_lines,
     selected_cache_dir,
     suite_csv_path,
@@ -39,6 +41,12 @@ class SuiteSelectionTests(unittest.TestCase):
             Path("/scripts"), Path("/build"), "expanded", custom_csv=None
         )
         self.assertEqual(path, Path("/scripts/opencl_conformance_tests_expanded.csv"))
+
+    def test_goal3_manifest_comes_from_script_tree(self) -> None:
+        path = suite_csv_path(
+            Path("/scripts"), Path("/build"), "goal3", custom_csv=None
+        )
+        self.assertEqual(path, Path("/scripts/opencl_conformance_tests_goal3.csv"))
 
     def test_custom_manifest_is_resolved(self) -> None:
         custom = Path("custom.csv")
@@ -89,6 +97,36 @@ class SuiteSelectionTests(unittest.TestCase):
 
 
 class OutputClassificationTests(unittest.TestCase):
+    ALL_UNSUPPORTED_OUTPUT = """\
+cxx_for_opencl_ext...
+Device does not support 'cl_ext_cxx_for_opencl'. Skipping the test.
+cxx_for_opencl_ext test not supported
+cxx_for_opencl_ver...
+Device does not support 'cl_ext_cxx_for_opencl'. Skipping the test.
+cxx_for_opencl_ver test not supported
+PASSED sub-test.
+PASSED test.
+"""
+
+    MIXED_INTEGER_OUTPUT = """\
+popcount...
+popcount passed
+integer_dot_product...
+cl_khr_integer_dot_product is not supported
+integer_dot_product test not supported
+extended_bit_ops_extract...
+cl_khr_extended_bit_ops is not supported
+extended_bit_ops_extract test not supported
+extended_bit_ops_insert...
+cl_khr_extended_bit_ops is not supported
+extended_bit_ops_insert test not supported
+extended_bit_ops_reverse...
+cl_khr_extended_bit_ops is not supported
+extended_bit_ops_reverse test not supported
+PASSED sub-test.
+PASSED 31 of 31 tests.
+"""
+
     def test_informational_max_error_is_not_failure(self) -> None:
         output = "degrees: Max error 1.4 ulps\nPASSED 18 of 18 tests.\n"
         self.assertEqual(marker_lines(output), ())
@@ -118,6 +156,62 @@ class OutputClassificationTests(unittest.TestCase):
     def test_gl_unsupported_skips_suite(self) -> None:
         output = "Test not run because GL-CL interop is not supported.\n"
         self.assertTrue(suite_was_skipped(output))
+
+    def test_all_registered_tests_unsupported_is_auditable_skip(self) -> None:
+        assessment = assess_output(self.ALL_UNSUPPORTED_OUTPUT)
+        self.assertTrue(assessment.all_selected_not_supported)
+        self.assertEqual(assessment.applicable_pass_count, 0)
+        self.assertEqual(
+            assessment.not_supported_tests,
+            ("cxx_for_opencl_ext", "cxx_for_opencl_ver"),
+        )
+        self.assertEqual(
+            assessment.not_supported_reasons,
+            ("Device does not support 'cl_ext_cxx_for_opencl'. Skipping the test.",),
+        )
+
+    def test_mixed_supported_and_na_tests_remains_applicable(self) -> None:
+        assessment = assess_output(self.MIXED_INTEGER_OUTPUT)
+        self.assertFalse(assessment.all_selected_not_supported)
+        self.assertEqual(assessment.applicable_pass_count, 31)
+        self.assertEqual(assessment.not_supported_count, 4)
+        self.assertEqual(len(assessment.not_supported_reasons), 2)
+
+    def test_unpaired_unsupported_text_does_not_skip_suite(self) -> None:
+        assessment = assess_output("feature test not supported\nPASSED test.\n")
+        self.assertFalse(assessment.all_selected_not_supported)
+        self.assertEqual(assessment.not_supported_count, 0)
+
+    def test_failures_take_priority_over_all_na(self) -> None:
+        common = {
+            "crash_signal": None,
+            "return_code": 0,
+            "failure_markers": (),
+            "suite_skipped": False,
+            "all_selected_not_supported": True,
+        }
+        self.assertEqual(classify_result(timed_out=True, **common), "timeout")
+        self.assertEqual(
+            classify_result(
+                timed_out=False,
+                **{**common, "crash_signal": 11, "return_code": -11},
+            ),
+            "crash",
+        )
+        self.assertEqual(
+            classify_result(
+                timed_out=False,
+                **{**common, "return_code": 1},
+            ),
+            "fail",
+        )
+        self.assertEqual(
+            classify_result(
+                timed_out=False,
+                **{**common, "failure_markers": ("ERROR: build failed",)},
+            ),
+            "fail",
+        )
 
 
 if __name__ == "__main__":

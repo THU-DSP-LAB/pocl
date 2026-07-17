@@ -16,6 +16,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from cts_output import assess_output
+
 FAILURE_PATTERN = re.compile(
     r"(^\s*ERROR:|\bFAILED\b|\bAssertion\b|\bSIGFPE\b|\bSIGSEGV\b|"
     r"Segmentation fault|core dumped|CUDA_ERROR_|Cannot select)",
@@ -32,7 +34,7 @@ GPU_IDLE_WAIT_SECONDS = 10
 GPU_IDLE_POLL_SECONDS = 0.2
 DEFAULT_CTS_TIMEOUT_SECONDS = 900
 DEFAULT_SUITE = "quick"
-KNOWN_SUITES = (DEFAULT_SUITE, "expanded")
+KNOWN_SUITES = (DEFAULT_SUITE, "expanded", "goal3")
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,11 @@ class TestResult:
     duration_seconds: float
     timed_out: bool
     failure_markers: tuple[str, ...]
+    selected_test_count: int
+    applicable_pass_count: int
+    not_supported_count: int
+    not_supported_tests: tuple[str, ...]
+    not_supported_reasons: tuple[str, ...]
     stdout_log: str
     stderr_log: str
 
@@ -325,6 +332,26 @@ def suite_was_skipped(output: str) -> bool:
     return any(pattern.search(output) for pattern in SUITE_SKIP_PATTERNS)
 
 
+def classify_result(
+    *,
+    timed_out: bool,
+    crash_signal: int | None,
+    return_code: int | None,
+    failure_markers: tuple[str, ...],
+    suite_skipped: bool,
+    all_selected_not_supported: bool,
+) -> str:
+    if timed_out:
+        return "timeout"
+    if crash_signal is not None:
+        return "crash"
+    if return_code != 0 or failure_markers:
+        return "fail"
+    if suite_skipped or all_selected_not_supported:
+        return "skip"
+    return "pass"
+
+
 def run_test(
     test: TestCase, config: RunnerConfig, environment: dict[str, str]
 ) -> TestResult:
@@ -354,18 +381,17 @@ def run_test(
     stderr_path.write_text(stderr, encoding="utf-8")
     combined_output = stdout + "\n" + stderr
     markers = marker_lines(combined_output)
+    assessment = assess_output(combined_output)
     return_code = process.returncode
     crash_signal = -return_code if return_code is not None and return_code < 0 else None
-    if timed_out:
-        status = "timeout"
-    elif crash_signal is not None:
-        status = "crash"
-    elif return_code != 0 or markers:
-        status = "fail"
-    elif suite_was_skipped(combined_output):
-        status = "skip"
-    else:
-        status = "pass"
+    status = classify_result(
+        timed_out=timed_out,
+        crash_signal=crash_signal,
+        return_code=return_code,
+        failure_markers=markers,
+        suite_skipped=suite_was_skipped(combined_output),
+        all_selected_not_supported=assessment.all_selected_not_supported,
+    )
     return TestResult(
         name=test.name,
         command=command,
@@ -375,6 +401,11 @@ def run_test(
         duration_seconds=duration,
         timed_out=timed_out,
         failure_markers=markers,
+        selected_test_count=assessment.selected_test_count,
+        applicable_pass_count=assessment.applicable_pass_count,
+        not_supported_count=assessment.not_supported_count,
+        not_supported_tests=assessment.not_supported_tests,
+        not_supported_reasons=assessment.not_supported_reasons,
         stdout_log=str(stdout_path),
         stderr_log=str(stderr_path),
     )

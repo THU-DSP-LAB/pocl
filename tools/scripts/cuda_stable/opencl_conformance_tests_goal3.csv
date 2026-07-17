@@ -1,0 +1,312 @@
+#
+# PoCL NVIDIA Goal 3 complete Conversions and Math CTS coverage.
+# CTS commit: 7c2441961271cc6a745a83725ba1f6efd6c2fbc7
+# No row enables wimpy mode or restricts Math vector widths.
+#
+Conversions Full 0001-0010,conversions/test_conversions 1 10
+Conversions Full 0011-0020,conversions/test_conversions 11 10
+Conversions Full 0021-0030,conversions/test_conversions 21 10
+Conversions Full 0031-0040,conversions/test_conversions 31 10
+Conversions Full 0041-0050,conversions/test_conversions 41 10
+Conversions Full 0051-0060,conversions/test_conversions 51 10
+Conversions Full 0061-0070,conversions/test_conversions 61 10
+Conversions Full 0071-0080,conversions/test_conversions 71 10
+Conversions Full 0081-0090,conversions/test_conversions 81 10
+Conversions Full 0091-0100,conversions/test_conversions 91 10
+Conversions Full 0101-0110,conversions/test_conversions 101 10
+Conversions Full 0111-0120,conversions/test_conversions 111 10
+Conversions Full 0121-0130,conversions/test_conversions 121 10
+Conversions Full 0131-0140,conversions/test_conversions 131 10
+Conversions Full 0141-0150,conversions/test_conversions 141 10
+Conversions Full 0151-0160,conversions/test_conversions 151 10
+Conversions Full 0161-0170,conversions/test_conversions 161 10
+Conversions Full 0171-0180,conversions/test_conversions 171 10
+Conversions Full 0181-0190,conversions/test_conversions 181 10
+Conversions Full 0191-0200,conversions/test_conversions 191 10
+Conversions Full 0201-0210,conversions/test_conversions 201 10
+Conversions Full 0211-0220,conversions/test_conversions 211 10
+Conversions Full 0221-0230,conversions/test_conversions 221 10
+Conversions Full 0231-0240,conversions/test_conversions 231 10
+Conversions Full 0241-0250,conversions/test_conversions 241 10
+Conversions Full 0251-0260,conversions/test_conversions 251 10
+Conversions Full 0261-0270,conversions/test_conversions 261 10
+Conversions Full 0271-0280,conversions/test_conversions 271 10
+Conversions Full 0281-0290,conversions/test_conversions 281 10
+Conversions Full 0291-0300,conversions/test_conversions 291 10
+Conversions Full 0301-0310,conversions/test_conversions 301 10
+Conversions Full 0311-0320,conversions/test_conversions 311 10
+Conversions Full 0321-0330,conversions/test_conversions 321 10
+Conversions Full 0331-0340,conversions/test_conversions 331 10
+Conversions Full 0341-0350,conversions/test_conversions 341 10
+Conversions Full 0351-0360,conversions/test_conversions 351 10
+Conversions Full 0361-0370,conversions/test_conversions 361 10
+Conversions Full 0371-0380,conversions/test_conversions 371 10
+Conversions Full 0381-0390,conversions/test_conversions 381 10
+Conversions Full 0391-0400,conversions/test_conversions 391 10
+Conversions Full 0401-0410,conversions/test_conversions 401 10
+Conversions Full 0411-0420,conversions/test_conversions 411 10
+Conversions Full 0421-0430,conversions/test_conversions 421 10
+Conversions Full 0431-0440,conversions/test_conversions 431 10
+Conversions Full 0441-0450,conversions/test_conversions 441 10
+Conversions Full 0451-0460,conversions/test_conversions 451 10
+Conversions Full 0461-0470,conversions/test_conversions 461 10
+Conversions Full 0471-0480,conversions/test_conversions 471 10
+Conversions Full 0481-0490,conversions/test_conversions 481 10
+Conversions Full 0491-0500,conversions/test_conversions 491 10
+Conversions Full 0501-0510,conversions/test_conversions 501 10
+Conversions Full 0511-0520,conversions/test_conversions 511 10
+Conversions Full 0521-0530,conversions/test_conversions 521 10
+Conversions Full 0531-0540,conversions/test_conversions 531 10
+Conversions Full 0541-0550,conversions/test_conversions 541 10
+Conversions Full 0551-0560,conversions/test_conversions 551 10
+Conversions Full 0561-0570,conversions/test_conversions 561 10
+Conversions Full 0571-0580,conversions/test_conversions 571 10
+Conversions Full 0581-0590,conversions/test_conversions 581 10
+Conversions Full 0591-0600,conversions/test_conversions 591 10
+Conversions Full 0601-0610,conversions/test_conversions 601 10
+Conversions Full 0611-0620,conversions/test_conversions 611 10
+Conversions Full 0621-0630,conversions/test_conversions 621 10
+Conversions Full 0631-0640,conversions/test_conversions 631 10
+Conversions Full 0641-0650,conversions/test_conversions 641 10
+Conversions Full 0651-0660,conversions/test_conversions 651 10
+Conversions Full 0661-0670,conversions/test_conversions 661 10
+Conversions Full 0671-0680,conversions/test_conversions 671 10
+Conversions Full 0681-0690,conversions/test_conversions 681 10
+Conversions Full 0691-0700,conversions/test_conversions 691 10
+Conversions Full 0701-0710,conversions/test_conversions 701 10
+Conversions Full 0711-0720,conversions/test_conversions 711 10
+Conversions Full 0721-0730,conversions/test_conversions 721 10
+Conversions Full 0731-0740,conversions/test_conversions 731 10
+Conversions Full 0741-0750,conversions/test_conversions 741 10
+Conversions Full 0751-0760,conversions/test_conversions 751 10
+Conversions Full 0761-0770,conversions/test_conversions 761 10
+Conversions Full 0771-0780,conversions/test_conversions 771 10
+Conversions Full 0781-0790,conversions/test_conversions 781 10
+Conversions Full 0791-0800,conversions/test_conversions 791 10
+Conversions Full 0801-0810,conversions/test_conversions 801 10
+Conversions Full 0811-0820,conversions/test_conversions 811 10
+Conversions Full 0821-0830,conversions/test_conversions 821 10
+Conversions Full 0831-0840,conversions/test_conversions 831 10
+Conversions Full 0841-0850,conversions/test_conversions 841 10
+Conversions Full 0851-0860,conversions/test_conversions 851 10
+Conversions Full 0861-0870,conversions/test_conversions 861 10
+Conversions Full 0871-0880,conversions/test_conversions 871 10
+Conversions Full 0881-0890,conversions/test_conversions 881 10
+Conversions Full 0891-0900,conversions/test_conversions 891 10
+Conversions Full 0901-0910,conversions/test_conversions 901 10
+Conversions Full 0911-0920,conversions/test_conversions 911 10
+Conversions Full 0921-0930,conversions/test_conversions 921 10
+Conversions Full 0931-0940,conversions/test_conversions 931 10
+Conversions Full 0941-0950,conversions/test_conversions 941 10
+Conversions Full 0951-0960,conversions/test_conversions 951 10
+Conversions Full 0961-0970,conversions/test_conversions 961 10
+Conversions Full 0971-0980,conversions/test_conversions 971 10
+Conversions Full 0981-0990,conversions/test_conversions 981 10
+Conversions Full 0991-1000,conversions/test_conversions 991 10
+Conversions Full 1001-1010,conversions/test_conversions 1001 10
+Conversions Full 1011-1020,conversions/test_conversions 1011 10
+Conversions Full 1021-1030,conversions/test_conversions 1021 10
+Conversions Full 1031-1040,conversions/test_conversions 1031 10
+Conversions Full 1041-1045,conversions/test_conversions 1041 5
+Math FP32 Full acos,math_brute_force/test_bruteforce -d acos
+Math FP32 Full acosh,math_brute_force/test_bruteforce -d acosh
+Math FP32 Full acospi,math_brute_force/test_bruteforce -d acospi
+Math FP32 Full add,math_brute_force/test_bruteforce -d add
+Math FP32 Full asin,math_brute_force/test_bruteforce -d asin
+Math FP32 Full asinh,math_brute_force/test_bruteforce -d asinh
+Math FP32 Full asinpi,math_brute_force/test_bruteforce -d asinpi
+Math FP32 Full assignment,math_brute_force/test_bruteforce -d assignment
+Math FP32 Full atan,math_brute_force/test_bruteforce -d atan
+Math FP32 Full atan2,math_brute_force/test_bruteforce -d atan2
+Math FP32 Full atan2pi,math_brute_force/test_bruteforce -d atan2pi
+Math FP32 Full atanh,math_brute_force/test_bruteforce -d atanh
+Math FP32 Full atanpi,math_brute_force/test_bruteforce -d atanpi
+Math FP32 Full cbrt,math_brute_force/test_bruteforce -d cbrt
+Math FP32 Full ceil,math_brute_force/test_bruteforce -d ceil
+Math FP32 Full copysign,math_brute_force/test_bruteforce -d copysign
+Math FP32 Full cos,math_brute_force/test_bruteforce -d cos
+Math FP32 Full cosh,math_brute_force/test_bruteforce -d cosh
+Math FP32 Full cospi,math_brute_force/test_bruteforce -d cospi
+Math FP32 Full divide,math_brute_force/test_bruteforce -d divide
+Math FP32 Full erf,math_brute_force/test_bruteforce -d erf
+Math FP32 Full erfc,math_brute_force/test_bruteforce -d erfc
+Math FP32 Full exp,math_brute_force/test_bruteforce -d exp
+Math FP32 Full exp10,math_brute_force/test_bruteforce -d exp10
+Math FP32 Full exp2,math_brute_force/test_bruteforce -d exp2
+Math FP32 Full expm1,math_brute_force/test_bruteforce -d expm1
+Math FP32 Full fabs,math_brute_force/test_bruteforce -d fabs
+Math FP32 Full fdim,math_brute_force/test_bruteforce -d fdim
+Math FP32 Full floor,math_brute_force/test_bruteforce -d floor
+Math FP32 Full fma,math_brute_force/test_bruteforce -d fma
+Math FP32 Full fmax,math_brute_force/test_bruteforce -d fmax
+Math FP32 Full fmin,math_brute_force/test_bruteforce -d fmin
+Math FP32 Full fmod,math_brute_force/test_bruteforce -d fmod
+Math FP32 Full fract,math_brute_force/test_bruteforce -d fract
+Math FP32 Full frexp,math_brute_force/test_bruteforce -d frexp
+Math FP32 Full half_cos,math_brute_force/test_bruteforce -d half_cos
+Math FP32 Full half_divide,math_brute_force/test_bruteforce -d half_divide
+Math FP32 Full half_exp,math_brute_force/test_bruteforce -d half_exp
+Math FP32 Full half_exp10,math_brute_force/test_bruteforce -d half_exp10
+Math FP32 Full half_exp2,math_brute_force/test_bruteforce -d half_exp2
+Math FP32 Full half_log,math_brute_force/test_bruteforce -d half_log
+Math FP32 Full half_log10,math_brute_force/test_bruteforce -d half_log10
+Math FP32 Full half_log2,math_brute_force/test_bruteforce -d half_log2
+Math FP32 Full half_powr,math_brute_force/test_bruteforce -d half_powr
+Math FP32 Full half_recip,math_brute_force/test_bruteforce -d half_recip
+Math FP32 Full half_rsqrt,math_brute_force/test_bruteforce -d half_rsqrt
+Math FP32 Full half_sin,math_brute_force/test_bruteforce -d half_sin
+Math FP32 Full half_sqrt,math_brute_force/test_bruteforce -d half_sqrt
+Math FP32 Full half_tan,math_brute_force/test_bruteforce -d half_tan
+Math FP32 Full hypot,math_brute_force/test_bruteforce -d hypot
+Math FP32 Full ilogb,math_brute_force/test_bruteforce -d ilogb
+Math FP32 Full isequal,math_brute_force/test_bruteforce -d isequal
+Math FP32 Full isfinite,math_brute_force/test_bruteforce -d isfinite
+Math FP32 Full isgreater,math_brute_force/test_bruteforce -d isgreater
+Math FP32 Full isgreaterequal,math_brute_force/test_bruteforce -d isgreaterequal
+Math FP32 Full isinf,math_brute_force/test_bruteforce -d isinf
+Math FP32 Full isless,math_brute_force/test_bruteforce -d isless
+Math FP32 Full islessequal,math_brute_force/test_bruteforce -d islessequal
+Math FP32 Full islessgreater,math_brute_force/test_bruteforce -d islessgreater
+Math FP32 Full isnan,math_brute_force/test_bruteforce -d isnan
+Math FP32 Full isnormal,math_brute_force/test_bruteforce -d isnormal
+Math FP32 Full isnotequal,math_brute_force/test_bruteforce -d isnotequal
+Math FP32 Full isordered,math_brute_force/test_bruteforce -d isordered
+Math FP32 Full isunordered,math_brute_force/test_bruteforce -d isunordered
+Math FP32 Full ldexp,math_brute_force/test_bruteforce -d ldexp
+Math FP32 Full lgamma,math_brute_force/test_bruteforce -d lgamma
+Math FP32 Full lgamma_r,math_brute_force/test_bruteforce -d lgamma_r
+Math FP32 Full log,math_brute_force/test_bruteforce -d log
+Math FP32 Full log10,math_brute_force/test_bruteforce -d log10
+Math FP32 Full log1p,math_brute_force/test_bruteforce -d log1p
+Math FP32 Full log2,math_brute_force/test_bruteforce -d log2
+Math FP32 Full logb,math_brute_force/test_bruteforce -d logb
+Math FP32 Full mad,math_brute_force/test_bruteforce -d mad
+Math FP32 Full maxmag,math_brute_force/test_bruteforce -d maxmag
+Math FP32 Full minmag,math_brute_force/test_bruteforce -d minmag
+Math FP32 Full modf,math_brute_force/test_bruteforce -d modf
+Math FP32 Full multiply,math_brute_force/test_bruteforce -d multiply
+Math FP32 Full nan,math_brute_force/test_bruteforce -d nan
+Math FP32 Full nextafter,math_brute_force/test_bruteforce -d nextafter
+Math FP32 Full not,math_brute_force/test_bruteforce -d not
+Math FP32 Full pow,math_brute_force/test_bruteforce -d pow
+Math FP32 Full pown,math_brute_force/test_bruteforce -d pown
+Math FP32 Full powr,math_brute_force/test_bruteforce -d powr
+Math FP32 Full reciprocal,math_brute_force/test_bruteforce -d reciprocal
+Math FP32 Full remainder,math_brute_force/test_bruteforce -d remainder
+Math FP32 Full remquo,math_brute_force/test_bruteforce -d remquo
+Math FP32 Full rint,math_brute_force/test_bruteforce -d rint
+Math FP32 Full rootn,math_brute_force/test_bruteforce -d rootn
+Math FP32 Full round,math_brute_force/test_bruteforce -d round
+Math FP32 Full rsqrt,math_brute_force/test_bruteforce -d rsqrt
+Math FP32 Full signbit,math_brute_force/test_bruteforce -d signbit
+Math FP32 Full sin,math_brute_force/test_bruteforce -d sin
+Math FP32 Full sincos,math_brute_force/test_bruteforce -d sincos
+Math FP32 Full sinh,math_brute_force/test_bruteforce -d sinh
+Math FP32 Full sinpi,math_brute_force/test_bruteforce -d sinpi
+Math FP32 Full sqrt,math_brute_force/test_bruteforce -d sqrt
+Math FP32 Full subtract,math_brute_force/test_bruteforce -d subtract
+Math FP32 Full tan,math_brute_force/test_bruteforce -d tan
+Math FP32 Full tanh,math_brute_force/test_bruteforce -d tanh
+Math FP32 Full tanpi,math_brute_force/test_bruteforce -d tanpi
+Math FP32 Full trunc,math_brute_force/test_bruteforce -d trunc
+Math FP64 Full acos,math_brute_force/test_bruteforce -f acos
+Math FP64 Full acosh,math_brute_force/test_bruteforce -f acosh
+Math FP64 Full acospi,math_brute_force/test_bruteforce -f acospi
+Math FP64 Full add,math_brute_force/test_bruteforce -f add
+Math FP64 Full asin,math_brute_force/test_bruteforce -f asin
+Math FP64 Full asinh,math_brute_force/test_bruteforce -f asinh
+Math FP64 Full asinpi,math_brute_force/test_bruteforce -f asinpi
+Math FP64 Full assignment,math_brute_force/test_bruteforce -f assignment
+Math FP64 Full atan,math_brute_force/test_bruteforce -f atan
+Math FP64 Full atan2,math_brute_force/test_bruteforce -f atan2
+Math FP64 Full atan2pi,math_brute_force/test_bruteforce -f atan2pi
+Math FP64 Full atanh,math_brute_force/test_bruteforce -f atanh
+Math FP64 Full atanpi,math_brute_force/test_bruteforce -f atanpi
+Math FP64 Full cbrt,math_brute_force/test_bruteforce -f cbrt
+Math FP64 Full ceil,math_brute_force/test_bruteforce -f ceil
+Math FP64 Full copysign,math_brute_force/test_bruteforce -f copysign
+Math FP64 Full cos,math_brute_force/test_bruteforce -f cos
+Math FP64 Full cosh,math_brute_force/test_bruteforce -f cosh
+Math FP64 Full cospi,math_brute_force/test_bruteforce -f cospi
+Math FP64 Full divide,math_brute_force/test_bruteforce -f divide
+Math FP64 Full erf,math_brute_force/test_bruteforce -f erf
+Math FP64 Full erfc,math_brute_force/test_bruteforce -f erfc
+Math FP64 Full exp,math_brute_force/test_bruteforce -f exp
+Math FP64 Full exp10,math_brute_force/test_bruteforce -f exp10
+Math FP64 Full exp2,math_brute_force/test_bruteforce -f exp2
+Math FP64 Full expm1,math_brute_force/test_bruteforce -f expm1
+Math FP64 Full fabs,math_brute_force/test_bruteforce -f fabs
+Math FP64 Full fdim,math_brute_force/test_bruteforce -f fdim
+Math FP64 Full floor,math_brute_force/test_bruteforce -f floor
+Math FP64 Full fma,math_brute_force/test_bruteforce -f fma
+Math FP64 Full fmax,math_brute_force/test_bruteforce -f fmax
+Math FP64 Full fmin,math_brute_force/test_bruteforce -f fmin
+Math FP64 Full fmod,math_brute_force/test_bruteforce -f fmod
+Math FP64 Full fract,math_brute_force/test_bruteforce -f fract
+Math FP64 Full frexp,math_brute_force/test_bruteforce -f frexp
+Math FP64 Full half_cos,math_brute_force/test_bruteforce -f half_cos
+Math FP64 Full half_divide,math_brute_force/test_bruteforce -f half_divide
+Math FP64 Full half_exp,math_brute_force/test_bruteforce -f half_exp
+Math FP64 Full half_exp10,math_brute_force/test_bruteforce -f half_exp10
+Math FP64 Full half_exp2,math_brute_force/test_bruteforce -f half_exp2
+Math FP64 Full half_log,math_brute_force/test_bruteforce -f half_log
+Math FP64 Full half_log10,math_brute_force/test_bruteforce -f half_log10
+Math FP64 Full half_log2,math_brute_force/test_bruteforce -f half_log2
+Math FP64 Full half_powr,math_brute_force/test_bruteforce -f half_powr
+Math FP64 Full half_recip,math_brute_force/test_bruteforce -f half_recip
+Math FP64 Full half_rsqrt,math_brute_force/test_bruteforce -f half_rsqrt
+Math FP64 Full half_sin,math_brute_force/test_bruteforce -f half_sin
+Math FP64 Full half_sqrt,math_brute_force/test_bruteforce -f half_sqrt
+Math FP64 Full half_tan,math_brute_force/test_bruteforce -f half_tan
+Math FP64 Full hypot,math_brute_force/test_bruteforce -f hypot
+Math FP64 Full ilogb,math_brute_force/test_bruteforce -f ilogb
+Math FP64 Full isequal,math_brute_force/test_bruteforce -f isequal
+Math FP64 Full isfinite,math_brute_force/test_bruteforce -f isfinite
+Math FP64 Full isgreater,math_brute_force/test_bruteforce -f isgreater
+Math FP64 Full isgreaterequal,math_brute_force/test_bruteforce -f isgreaterequal
+Math FP64 Full isinf,math_brute_force/test_bruteforce -f isinf
+Math FP64 Full isless,math_brute_force/test_bruteforce -f isless
+Math FP64 Full islessequal,math_brute_force/test_bruteforce -f islessequal
+Math FP64 Full islessgreater,math_brute_force/test_bruteforce -f islessgreater
+Math FP64 Full isnan,math_brute_force/test_bruteforce -f isnan
+Math FP64 Full isnormal,math_brute_force/test_bruteforce -f isnormal
+Math FP64 Full isnotequal,math_brute_force/test_bruteforce -f isnotequal
+Math FP64 Full isordered,math_brute_force/test_bruteforce -f isordered
+Math FP64 Full isunordered,math_brute_force/test_bruteforce -f isunordered
+Math FP64 Full ldexp,math_brute_force/test_bruteforce -f ldexp
+Math FP64 Full lgamma,math_brute_force/test_bruteforce -f lgamma
+Math FP64 Full lgamma_r,math_brute_force/test_bruteforce -f lgamma_r
+Math FP64 Full log,math_brute_force/test_bruteforce -f log
+Math FP64 Full log10,math_brute_force/test_bruteforce -f log10
+Math FP64 Full log1p,math_brute_force/test_bruteforce -f log1p
+Math FP64 Full log2,math_brute_force/test_bruteforce -f log2
+Math FP64 Full logb,math_brute_force/test_bruteforce -f logb
+Math FP64 Full mad,math_brute_force/test_bruteforce -f mad
+Math FP64 Full maxmag,math_brute_force/test_bruteforce -f maxmag
+Math FP64 Full minmag,math_brute_force/test_bruteforce -f minmag
+Math FP64 Full modf,math_brute_force/test_bruteforce -f modf
+Math FP64 Full multiply,math_brute_force/test_bruteforce -f multiply
+Math FP64 Full nan,math_brute_force/test_bruteforce -f nan
+Math FP64 Full nextafter,math_brute_force/test_bruteforce -f nextafter
+Math FP64 Full not,math_brute_force/test_bruteforce -f not
+Math FP64 Full pow,math_brute_force/test_bruteforce -f pow
+Math FP64 Full pown,math_brute_force/test_bruteforce -f pown
+Math FP64 Full powr,math_brute_force/test_bruteforce -f powr
+Math FP64 Full reciprocal,math_brute_force/test_bruteforce -f reciprocal
+Math FP64 Full remainder,math_brute_force/test_bruteforce -f remainder
+Math FP64 Full remquo,math_brute_force/test_bruteforce -f remquo
+Math FP64 Full rint,math_brute_force/test_bruteforce -f rint
+Math FP64 Full rootn,math_brute_force/test_bruteforce -f rootn
+Math FP64 Full round,math_brute_force/test_bruteforce -f round
+Math FP64 Full rsqrt,math_brute_force/test_bruteforce -f rsqrt
+Math FP64 Full signbit,math_brute_force/test_bruteforce -f signbit
+Math FP64 Full sin,math_brute_force/test_bruteforce -f sin
+Math FP64 Full sincos,math_brute_force/test_bruteforce -f sincos
+Math FP64 Full sinh,math_brute_force/test_bruteforce -f sinh
+Math FP64 Full sinpi,math_brute_force/test_bruteforce -f sinpi
+Math FP64 Full sqrt,math_brute_force/test_bruteforce -f sqrt
+Math FP64 Full subtract,math_brute_force/test_bruteforce -f subtract
+Math FP64 Full tan,math_brute_force/test_bruteforce -f tan
+Math FP64 Full tanh,math_brute_force/test_bruteforce -f tanh
+Math FP64 Full tanpi,math_brute_force/test_bruteforce -f tanpi
+Math FP64 Full trunc,math_brute_force/test_bruteforce -f trunc
