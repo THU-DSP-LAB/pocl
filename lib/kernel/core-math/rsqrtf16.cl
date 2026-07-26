@@ -576,7 +576,7 @@ _CL_OVERLOADABLE half rsqrt(half x){
     // x + nan.f raises invalid if x = -sNaN
     return (u == 0x8000) ? minus_inf.f : nan.f;
   }
-  if ((u >> 10) == 0x1f) return 1.0f16 / x; // NaN or Inf
+  if ((u >> 10) == 0x1f) return (half)1.0f / x; // NaN or Inf
   if (i1 == 0) { // subnormal case
 #ifdef CORE_MATH_SUPPORT_ERRNO
     if (i2 == 0)

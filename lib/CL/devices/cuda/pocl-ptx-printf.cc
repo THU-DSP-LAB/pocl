@@ -111,8 +111,18 @@ llvm::Value *castPointerArgument(llvm::IRBuilder<> &Builder,
       Argument, llvm::PointerType::get(Builder.getContext(), 0));
 }
 
+llvm::Value *promoteScalarArgument(llvm::IRBuilder<> &Builder,
+                                   llvm::Value *Argument) {
+  llvm::Type *Type = Argument->getType();
+  if (!Type->isFloatingPointTy() || Type->isDoubleTy())
+    return Argument;
+  return Builder.CreateFPExt(Argument, Builder.getDoubleTy(),
+                             "pocl.cuda.printf.fp.promoted");
+}
+
 bool storeArgument(llvm::IRBuilder<> &Builder, const ArgumentStore &Store) {
-  llvm::Value *Argument = castPointerArgument(Builder, Store.Value);
+  llvm::Value *Argument = promoteScalarArgument(
+      Builder, castPointerArgument(Builder, Store.Value));
   llvm::Type *Type = Argument->getType();
   llvm::TypeSize Size =
       Builder.GetInsertBlock()->getModule()->getDataLayout().getTypeStoreSize(

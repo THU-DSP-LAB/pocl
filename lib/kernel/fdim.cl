@@ -24,4 +24,9 @@
 
 #include "templates.h"
 
+#ifdef POCL_CORE_MATH_FP16
+#undef __IF_FP16
+#define __IF_FP16(X)
+#endif
+
 DEFINE_EXPR_V_VV(fdim, (isnan(a) ? a : (isnan(b) ? b : fmax(a-b, (stype)0))))

@@ -2090,7 +2090,7 @@ _CL_OVERLOADABLE half sincos(half x, global half *cosval){
     return retval;
 }
 
-#ifdef __opencl_c_generic_address_space
+#if defined(__opencl_c_generic_address_space) && !defined(__NVPTX__)
 _CL_OVERLOADABLE half sincos(half x, generic half *cosval){
     half temp = 0;
     half retval = sincos(x, &temp);

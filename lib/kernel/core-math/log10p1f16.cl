@@ -195,9 +195,9 @@ _CL_OVERLOADABLE half log10p1(half x){
   }
 
   // deal with exact cases
-  if (u == 0x41100000u) return 1.0f16; // x = 9
-  if (u == 0x42c60000u) return 2.0f16; // x = 99
-  if (u == 0x4479c000u) return 3.0f16; // x = 999
+  if (u == 0x41100000u) return (half)1.0f; // x = 9
+  if (u == 0x42c60000u) return (half)2.0f; // x = 99
+  if (u == 0x4479c000u) return (half)3.0f; // x = 999
   // note: 9999 is not representable in binary16
 
   v.f += 1.0f; // exact

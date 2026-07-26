@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import os
 import re
@@ -13,11 +12,17 @@ import signal
 import subprocess
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from cts_output import assess_output
+from gpu_process_audit import (
+    enforce_gpu_process_policy,
+    gpu_process_snapshot,
+    write_gpu_process_report,
+)
+from result_evidence import write_checksums, write_summary
 
 FAILURE_PATTERN = re.compile(
     r"(^\s*ERROR:|\bFAILED\b|\bAssertion\b|\bSIGFPE\b|\bSIGSEGV\b|"
@@ -35,11 +40,9 @@ SUITE_SKIP_PATTERNS = (
     re.compile(r"^\s*cl_khr_spir is not supported.*Skipping test\.$", re.MULTILINE),
 )
 TERMINATION_GRACE_SECONDS = 5
-GPU_IDLE_WAIT_SECONDS = 10
-GPU_IDLE_POLL_SECONDS = 0.2
 DEFAULT_CTS_TIMEOUT_SECONDS = 900
 DEFAULT_SUITE = "quick"
-KNOWN_SUITES = (DEFAULT_SUITE, "expanded", "goal3", "goal4")
+KNOWN_SUITES = (DEFAULT_SUITE, "expanded", "goal3", "goal4", "goal5")
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,7 @@ class RunnerConfig:
     suite_name: str
     csv_path: Path
     cache_dir: Path
+    allow_shared_gpu: bool
 
     @property
     def cts_dir(self) -> Path:
@@ -151,6 +155,14 @@ def parse_args() -> RunnerConfig:
         ),
     )
     parser.add_argument("--filter", dest="name_filter")
+    parser.add_argument(
+        "--allow-shared-gpu",
+        action="store_true",
+        help=(
+            "allow compute processes from other users; record GPU process "
+            "snapshots instead of requiring an empty process table"
+        ),
+    )
     args = parser.parse_args()
     build_dir = args.build_dir.resolve()
     install_dir = (args.install_dir or default_install).resolve()
@@ -175,6 +187,7 @@ def parse_args() -> RunnerConfig:
         suite_name=suite_name,
         csv_path=csv_path,
         cache_dir=cache_dir,
+        allow_shared_gpu=args.allow_shared_gpu,
     )
 
 
@@ -271,27 +284,6 @@ def verify_device_contract(
     return json.loads(report_path.read_text(encoding="utf-8"))
 
 
-def gpu_processes() -> tuple[str, ...]:
-    output = run_capture(
-        (
-            "nvidia-smi",
-            "--query-compute-apps=pid,process_name,used_memory",
-            "--format=csv,noheader,nounits",
-        ),
-        dict(os.environ),
-    )
-    return tuple(line for line in output.splitlines() if line.strip())
-
-
-def wait_for_gpu_idle() -> tuple[str, ...]:
-    deadline = time.monotonic() + GPU_IDLE_WAIT_SECONDS
-    processes = gpu_processes()
-    while processes and time.monotonic() < deadline:
-        time.sleep(GPU_IDLE_POLL_SECONDS)
-        processes = gpu_processes()
-    return processes
-
-
 def record_environment(
     config: RunnerConfig,
     environment: dict[str, str],
@@ -320,6 +312,7 @@ def record_environment(
         "build_dir": str(config.build_dir),
         "install_dir": str(config.install_dir),
         "timeout_seconds": config.timeout_seconds,
+        "allow_shared_gpu": config.allow_shared_gpu,
         "commands": {
             name: run_capture(command, environment).strip()
             for name, command in commands.items()
@@ -440,54 +433,60 @@ def run_test(
     )
 
 
-def write_summary(config: RunnerConfig, results: list[TestResult]) -> None:
-    counts = {status: 0 for status in ("pass", "skip", "fail", "crash", "timeout")}
-    for result in results:
-        counts[result.status] += 1
-    report = {"counts": counts, "results": [asdict(result) for result in results]}
-    path = config.output_dir / "summary.json"
-    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def write_checksums(output_dir: Path) -> None:
-    checksums = {
-        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in sorted(output_dir.iterdir())
-        if path.is_file() and path.name != "sha256sums.json"
-    }
-    path = output_dir / "sha256sums.json"
-    path.write_text(json.dumps(checksums, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
 def main() -> int:
     config = parse_args()
     config.output_dir.mkdir(parents=True, exist_ok=False)
     environment = runtime_environment(config)
     tests = load_tests(config)
-    initial_processes = wait_for_gpu_idle()
-    if initial_processes:
-        raise RuntimeError("GPU is not exclusive:\n" + "\n".join(initial_processes))
+    initial_processes = gpu_process_snapshot(config.allow_shared_gpu)
+    write_gpu_process_report(
+        config.output_dir,
+        allow_shared_gpu=config.allow_shared_gpu,
+        initial=initial_processes,
+    )
+    enforce_gpu_process_policy(
+        initial_processes,
+        allow_shared_gpu=config.allow_shared_gpu,
+        error_message="GPU is not exclusive",
+    )
     verify_inputs(config, tests, environment)
     device_report = verify_device_contract(config, environment)
-    validation_processes = wait_for_gpu_idle()
-    if validation_processes:
-        raise RuntimeError(
-            "Device validation left GPU processes:\n" + "\n".join(validation_processes)
-        )
+    validation_processes = gpu_process_snapshot(config.allow_shared_gpu)
+    write_gpu_process_report(
+        config.output_dir,
+        allow_shared_gpu=config.allow_shared_gpu,
+        initial=initial_processes,
+        after_validation=validation_processes,
+    )
+    enforce_gpu_process_policy(
+        validation_processes,
+        allow_shared_gpu=config.allow_shared_gpu,
+        error_message="Device validation left GPU processes",
+    )
     record_environment(config, environment, device_report)
     results: list[TestResult] = []
     for index, test in enumerate(tests, start=1):
         result = run_test(test, config, environment)
         results.append(result)
-        write_summary(config, results)
+        write_summary(config.output_dir, results)
         print(
             f"[{index:02d}/{len(tests):02d}] {result.status.upper():7s} "
             f"{result.name} ({result.duration_seconds:.1f}s)",
             flush=True,
         )
-    remaining_processes = wait_for_gpu_idle()
-    if remaining_processes:
-        raise RuntimeError("GPU processes remain after CTS:\n" + "\n".join(remaining_processes))
+    remaining_processes = gpu_process_snapshot(config.allow_shared_gpu)
+    write_gpu_process_report(
+        config.output_dir,
+        allow_shared_gpu=config.allow_shared_gpu,
+        initial=initial_processes,
+        after_validation=validation_processes,
+        final=remaining_processes,
+    )
+    enforce_gpu_process_policy(
+        remaining_processes,
+        allow_shared_gpu=config.allow_shared_gpu,
+        error_message="GPU processes remain after CTS",
+    )
     write_checksums(config.output_dir)
     return 1 if any(result.status in {"fail", "crash", "timeout"} for result in results) else 0
 

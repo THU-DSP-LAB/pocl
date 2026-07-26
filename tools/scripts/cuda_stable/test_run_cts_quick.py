@@ -7,7 +7,9 @@ import json
 import tempfile
 from pathlib import Path
 
+from gpu_process_audit import enforce_gpu_process_policy, write_gpu_process_report
 from opencl_probe import decode_version
+from result_evidence import write_checksums
 from run_cts_quick import (
     assess_output,
     classify_result,
@@ -17,11 +19,40 @@ from run_cts_quick import (
     source_checkout_paths,
     suite_csv_path,
     suite_was_skipped,
-    write_checksums,
 )
 
 
 class SuiteSelectionTests(unittest.TestCase):
+    def test_shared_gpu_report_records_all_checkpoints(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            write_gpu_process_report(
+                output,
+                allow_shared_gpu=True,
+                initial=("100, external-a, 4096",),
+                after_validation=("100, external-a, 4096", "200, external-b, 512"),
+                final=("200, external-b, 512",),
+            )
+            report = json.loads((output / "gpu-processes.json").read_text())
+            self.assertTrue(report["allow_shared_gpu"])
+            self.assertEqual(report["initial"], ["100, external-a, 4096"])
+            self.assertEqual(len(report["after_device_validation"]), 2)
+            self.assertEqual(report["final"], ["200, external-b, 512"])
+
+    def test_shared_gpu_policy_is_explicit(self) -> None:
+        processes = ("1234, external, 4096",)
+        enforce_gpu_process_policy(
+            processes,
+            allow_shared_gpu=True,
+            error_message="GPU is not exclusive",
+        )
+        with self.assertRaisesRegex(RuntimeError, "GPU is not exclusive"):
+            enforce_gpu_process_policy(
+                processes,
+                allow_shared_gpu=False,
+                error_message="GPU is not exclusive",
+            )
+
     def test_result_checksums_are_reproducible(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
@@ -84,6 +115,36 @@ class SuiteSelectionTests(unittest.TestCase):
             Path("/scripts"), Path("/build"), "goal4", custom_csv=None
         )
         self.assertEqual(path, Path("/scripts/opencl_conformance_tests_goal4.csv"))
+
+    def test_goal5_manifest_comes_from_script_tree(self) -> None:
+        path = suite_csv_path(
+            Path("/scripts"), Path("/build"), "goal5", custom_csv=None
+        )
+        self.assertEqual(path, Path("/scripts/opencl_conformance_tests_goal5.csv"))
+
+    def test_goal5_manifest_has_capabilities_and_regressions(self) -> None:
+        manifest = Path(__file__).with_name("opencl_conformance_tests_goal5.csv")
+        entries = tuple(
+            line.strip()
+            for line in manifest.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        names = tuple(entry.split(",", 1)[0] for entry in entries)
+        self.assertEqual(len(entries), 12)
+        self.assertEqual(len(names), len(set(names)))
+        for required in (
+            "Legacy Atomics",
+            "C11 Atomics",
+            "Core Subgroups",
+            "Work-group Collectives",
+            "Work-group Barrier Regression",
+            "Async Work-group Copy Regression",
+            "Coarse-grain Buffer SVM",
+            "SPIR-V IL",
+            "FP16 Core",
+            "Event Callback Concurrency",
+        ):
+            self.assertIn(required, names)
 
     def test_goal4_manifest_has_required_independent_entries(self) -> None:
         manifest = Path(__file__).with_name("opencl_conformance_tests_goal4.csv")

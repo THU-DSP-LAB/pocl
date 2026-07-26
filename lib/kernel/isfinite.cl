@@ -24,6 +24,11 @@
 
 #include "templates.h"
 
+#ifdef POCL_CORE_MATH_FP16
+#undef __IF_FP16
+#define __IF_FP16(X)
+#endif
+
 #define __builtin_isfinitef __builtin_isfinite
 #define __builtin_isfinitef16 __builtin_isfinite
 

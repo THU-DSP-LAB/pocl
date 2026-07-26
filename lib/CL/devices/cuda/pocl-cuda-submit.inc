@@ -46,22 +46,19 @@ pocl_cuda_submit_node (_cl_command_node *node, cl_command_queue cq, int locked)
       }
     }
 
-  /* Wait on flag for external events */
+  /* CUDA async copies involving pageable host memory may block in the driver
+   * when they are enqueued behind an unresolved stream wait. Waiting for
+   * external dependencies on the host keeps the submit thread out of CUDA
+   * until the user or foreign-device event is complete. The event lock and
+   * condition variable make the dependency count immune to missed wakeups. */
   if (event_data->num_ext_events)
     {
-      CUdeviceptr dev_ext_event_flag;
-      result = cuMemHostAlloc ((void **)&event_data->ext_event_flag, 4,
-                               CU_MEMHOSTALLOC_DEVICEMAP);
-      CUDA_CHECK_ABORT (result, "cuMemAllocHost");
-
-      *event_data->ext_event_flag = 0;
-
-      result = cuMemHostGetDevicePointer (&dev_ext_event_flag,
-                                           event_data->ext_event_flag, 0);
-      CUDA_CHECK_ABORT (result, "cuMemHostGetDevicePointer");
-      result = cuStreamWaitValue32 (stream, dev_ext_event_flag, 1,
-                                    CU_STREAM_WAIT_VALUE_GEQ);
-      CUDA_CHECK_ABORT (result, "cuStreamWaitValue32");
+      if (!((pocl_cuda_queue_data_t *)cq->data)->use_threads)
+        POCL_ABORT (
+            "Can't handle non-CUDA dependencies without queue threads\n");
+      while (event_data->num_ext_events)
+        PTHREAD_CHECK (pthread_cond_wait (&event_data->event_cond,
+                                          &node->sync.event.event->pocl_lock));
     }
 
   /* Create and record event for command start if profiling enabled */
@@ -95,21 +92,21 @@ pocl_cuda_submit_node (_cl_command_node *node, cl_command_queue cq, int locked)
     case CL_COMMAND_READ_BUFFER:
       pocl_cuda_submit_read (
         stream, cmd->read.dst_host_ptr,
-        cmd->read.src->device_ptrs[dev->global_mem_id].mem_ptr,
+        &cmd->read.src->device_ptrs[dev->global_mem_id],
         node->command.read.offset, node->command.read.size);
       break;
     case CL_COMMAND_WRITE_BUFFER:
       pocl_cuda_submit_write (
         stream, cmd->write.src_host_ptr,
-        cmd->write.dst->device_ptrs[dev->global_mem_id].mem_ptr,
+        &cmd->write.dst->device_ptrs[dev->global_mem_id],
         node->command.write.offset, node->command.write.size);
       break;
     case CL_COMMAND_COPY_BUFFER:
       {
         pocl_cuda_submit_copy (
-          stream, cmd->copy.src->device_ptrs[dev->global_mem_id].mem_ptr,
+          stream, &cmd->copy.src->device_ptrs[dev->global_mem_id],
           cmd->copy.src_offset,
-          cmd->copy.dst->device_ptrs[dev->global_mem_id].mem_ptr,
+          &cmd->copy.dst->device_ptrs[dev->global_mem_id],
           cmd->copy.dst_offset, cmd->copy.size);
         break;
       }
@@ -146,8 +143,7 @@ pocl_cuda_submit_node (_cl_command_node *node, cl_command_queue cq, int locked)
     case CL_COMMAND_MAP_BUFFER:
       {
         pocl_cuda_submit_map_mem (
-          stream, cmd->map.buffer,
-          &cmd->map.buffer->device_ptrs[dev->global_mem_id],
+          stream, &cmd->map.buffer->device_ptrs[dev->global_mem_id],
           cmd->map.mapping->offset, cmd->map.mapping->size,
           cmd->map.mapping->host_ptr);
         break;
@@ -175,7 +171,7 @@ pocl_cuda_submit_node (_cl_command_node *node, cl_command_queue cq, int locked)
             cl_mem mem = node->migr_infos->buffer;
             pocl_cuda_submit_read (
               stream, mem->mem_host_ptr,
-              mem->device_ptrs[dev->global_mem_id].mem_ptr, 0, mem->size);
+              &mem->device_ptrs[dev->global_mem_id], 0, mem->size);
             break;
           }
         case ENQUEUE_MIGRATE_TYPE_H2D:
@@ -183,7 +179,7 @@ pocl_cuda_submit_node (_cl_command_node *node, cl_command_queue cq, int locked)
             cl_mem mem = node->migr_infos->buffer;
             pocl_cuda_submit_write (
               stream, mem->mem_host_ptr,
-              mem->device_ptrs[dev->global_mem_id].mem_ptr, 0, mem->size);
+              &mem->device_ptrs[dev->global_mem_id], 0, mem->size);
             break;
           }
         case ENQUEUE_MIGRATE_TYPE_D2D:
@@ -216,6 +212,10 @@ pocl_cuda_submit_node (_cl_command_node *node, cl_command_queue cq, int locked)
     case CL_COMMAND_SVM_MAP:
     case CL_COMMAND_SVM_UNMAP:
       /* empty */
+      break;
+    case CL_COMMAND_SVM_MIGRATE_MEM:
+      /* CUDA managed allocations migrate on demand. Recording this command's
+         stream event preserves the OpenCL queue and event dependencies. */
       break;
 
     case CL_COMMAND_SVM_MEMCPY:

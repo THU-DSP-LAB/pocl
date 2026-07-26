@@ -21,7 +21,11 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 */
 
-#define FULL_MASK 0xFFFFFFFF
+uint
+_pocl_sub_group_active_mask (void)
+{
+  return __nvvm_vote_ballot (1);
+}
 
 #define SUBGROUP_SHUFFLE_I32_PT(PREFIX, TYPE)                                 \
   TYPE _CL_OVERLOADABLE PREFIX##sub_group_shuffle (TYPE value, uint idx)      \

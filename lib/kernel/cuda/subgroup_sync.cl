@@ -21,24 +21,31 @@
    IN THE SOFTWARE.
 */
 
-#define FULL_MASK 0xFFFFFFFF
+uint
+_pocl_sub_group_active_mask (void)
+{
+  uint mask;
+  __asm__ volatile ("activemask.b32 %0;" : "=r"(mask));
+  return mask;
+}
 
 int _CL_OVERLOADABLE
 sub_group_all (int predicate)
 {
-  return __nvvm_vote_all_sync (FULL_MASK, !!predicate);
+  return __nvvm_vote_all_sync (_pocl_sub_group_active_mask (), !!predicate);
 }
 
 int _CL_OVERLOADABLE
 sub_group_any (int predicate)
 {
-  return __nvvm_vote_any_sync (FULL_MASK, !!predicate);
+  return __nvvm_vote_any_sync (_pocl_sub_group_active_mask (), !!predicate);
 }
 
 #define SUBGROUP_SHUFFLE_I32_PT(PREFIX, TYPE)                                 \
   TYPE _CL_OVERLOADABLE PREFIX##sub_group_shuffle (TYPE value, uint idx)      \
   {                                                                           \
-    return __nvvm_shfl_sync_idx_i32 (FULL_MASK, value, idx,                   \
+    return __nvvm_shfl_sync_idx_i32 (_pocl_sub_group_active_mask (), value,   \
+                                     idx,                                     \
                                      get_max_sub_group_size () - 1);          \
   }
 
@@ -56,14 +63,14 @@ SUBGROUP_SHUFFLE_I32 (uint);
 float _CL_OVERLOADABLE
 sub_group_shuffle (float value, uint idx)
 {
-  return __nvvm_shfl_sync_idx_f32 (FULL_MASK, value, idx,
+  return __nvvm_shfl_sync_idx_f32 (_pocl_sub_group_active_mask (), value, idx,
                                    get_max_sub_group_size () - 1);
 }
 
 float _CL_OVERLOADABLE
 intel_sub_group_shuffle (float value, uint idx)
 {
-  return __nvvm_shfl_sync_idx_f32 (FULL_MASK, value, idx,
+  return __nvvm_shfl_sync_idx_f32 (_pocl_sub_group_active_mask (), value, idx,
                                    get_max_sub_group_size () - 1);
 }
 
@@ -83,12 +90,13 @@ intel_sub_group_shuffle (half value, uint idx)
   TYPE _CL_OVERLOADABLE PREFIX##sub_group_shuffle (TYPE value, uint idx)      \
   {                                                                           \
     uint low, high;                                                           \
+    uint active_mask = _pocl_sub_group_active_mask ();                        \
     __asm__ volatile ("mov.b64 {%0,%1}, %2;"                                  \
                       : "=r"(low), "=r"(high)                                 \
                       : "d"(value));                                          \
-    low = __nvvm_shfl_sync_idx_i32 (FULL_MASK, low, idx,                      \
+    low = __nvvm_shfl_sync_idx_i32 (active_mask, low, idx,                    \
                                     get_max_sub_group_size () - 1);           \
-    high = __nvvm_shfl_sync_idx_i32 (FULL_MASK, high, idx,                    \
+    high = __nvvm_shfl_sync_idx_i32 (active_mask, high, idx,                  \
                                      get_max_sub_group_size () - 1);          \
     __asm__ volatile ("mov.b64 %0, {%1,%2};"                                  \
                       : "=d"(value)                                           \
@@ -107,7 +115,8 @@ SUBGROUP_SHUFFLE_2xI32 (double);
 #define SUBGROUP_SHUFFLE_XOR_I32_PT(PREFIX, TYPE)                             \
   TYPE _CL_OVERLOADABLE PREFIX##sub_group_shuffle_xor (TYPE value, uint mask) \
   {                                                                           \
-    return __nvvm_shfl_sync_bfly_i32 (FULL_MASK, value, mask,                 \
+    return __nvvm_shfl_sync_bfly_i32 (_pocl_sub_group_active_mask (), value,  \
+                                      mask,                                   \
                                       get_max_sub_group_size () - 1);         \
   }
 
@@ -125,28 +134,30 @@ SUBGROUP_SHUFFLE_XOR_I32 (uint);
 float _CL_OVERLOADABLE
 sub_group_shuffle_xor (float value, uint mask)
 {
-  return __nvvm_shfl_sync_bfly_f32 (FULL_MASK, value, mask,
+  return __nvvm_shfl_sync_bfly_f32 (_pocl_sub_group_active_mask (), value, mask,
                                     get_max_sub_group_size () - 1);
 }
 
 float _CL_OVERLOADABLE
 intel_sub_group_shuffle_xor (float value, uint mask)
 {
-  return __nvvm_shfl_sync_bfly_f32 (FULL_MASK, value, mask,
+  return __nvvm_shfl_sync_bfly_f32 (_pocl_sub_group_active_mask (), value, mask,
                                     get_max_sub_group_size () - 1);
 }
 
 half _CL_OVERLOADABLE
 sub_group_shuffle_xor (half value, uint mask)
 {
-  return (half)__nvvm_shfl_sync_bfly_f32 (FULL_MASK, value, mask,
+  return (half)__nvvm_shfl_sync_bfly_f32 (_pocl_sub_group_active_mask (), value,
+                                          mask,
                                           get_max_sub_group_size () - 1);
 }
 
 half _CL_OVERLOADABLE
 intel_sub_group_shuffle_xor (half value, uint mask)
 {
-  return (half)__nvvm_shfl_sync_bfly_f32 (FULL_MASK, value, mask,
+  return (half)__nvvm_shfl_sync_bfly_f32 (_pocl_sub_group_active_mask (), value,
+                                          mask,
                                           get_max_sub_group_size () - 1);
 }
 
@@ -154,12 +165,13 @@ intel_sub_group_shuffle_xor (half value, uint mask)
   TYPE _CL_OVERLOADABLE PREFIX##sub_group_shuffle_xor (TYPE value, uint mask) \
   {                                                                           \
     uint low, high;                                                           \
+    uint active_mask = _pocl_sub_group_active_mask ();                        \
     __asm__ volatile ("mov.b64 {%0,%1}, %2;"                                  \
                       : "=r"(low), "=r"(high)                                 \
                       : "d"(value));                                          \
-    low = __nvvm_shfl_sync_bfly_i32 (FULL_MASK, low, mask,                    \
+    low = __nvvm_shfl_sync_bfly_i32 (active_mask, low, mask,                  \
                                      get_max_sub_group_size () - 1);          \
-    high = __nvvm_shfl_sync_bfly_i32 (FULL_MASK, high, mask,                  \
+    high = __nvvm_shfl_sync_bfly_i32 (active_mask, high, mask,                \
                                       get_max_sub_group_size () - 1);         \
     __asm__ volatile ("mov.b64 %0, {%1,%2};"                                  \
                       : "=d"(value)                                           \
@@ -175,24 +187,30 @@ SUBGROUP_SHUFFLE_XOR_2xI32 (long);
 SUBGROUP_SHUFFLE_XOR_2xI32 (ulong);
 SUBGROUP_SHUFFLE_XOR_2xI32 (double);
 
-// XXX: Simplify by using __nvvm_redux_sync* if/when there's a SM80+ kernellib
 #define SUB_GROUP_REDUCE_OT(OPNAME, OPERATION, TYPE)                          \
   TYPE _CL_OVERLOADABLE sub_group_reduce##OPNAME (TYPE val)                   \
   {                                                                           \
-    uint lane = get_sub_group_local_id ();                                    \
-    for (uint srcmask = get_max_sub_group_size () / 2; srcmask >= 1;          \
-         srcmask /= 2)                                                        \
+    uint active_mask = _pocl_sub_group_active_mask ();                        \
+    TYPE result = val;                                                        \
+    bool initialized = false;                                                 \
+    for (uint lane = 0; lane < get_max_sub_group_size (); ++lane)             \
       {                                                                       \
-        uint src_lane = lane ^ srcmask;                                       \
-        TYPE a = val;                                                         \
-        TYPE b = sub_group_shuffle_xor (a, srcmask);                          \
-        /* Ignore values from inactive lanes */                               \
-        if ((1 << src_lane) & __nvvm_vote_any_sync (FULL_MASK, 1))            \
+        if (active_mask & (1u << lane))                                       \
           {                                                                   \
-            val = OPERATION;                                                  \
+            TYPE b = sub_group_shuffle (val, lane);                           \
+            if (!initialized)                                                 \
+              {                                                               \
+                result = b;                                                   \
+                initialized = true;                                           \
+              }                                                               \
+            else                                                              \
+              {                                                               \
+                TYPE a = result;                                              \
+                result = OPERATION;                                           \
+              }                                                               \
           }                                                                   \
       }                                                                       \
-    return val;                                                               \
+    return result;                                                            \
   }
 
 #define SUB_GROUP_REDUCE_T(OPNAME, OPERATION)                                 \

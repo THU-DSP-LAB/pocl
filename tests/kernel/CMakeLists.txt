@@ -352,12 +352,14 @@ set_property(TEST
   "kernel/test_shuffle_ushort_loopvec"
   "kernel/test_shuffle_int_loopvec"
   "kernel/test_shuffle_uint_loopvec"
+  "kernel/test_shuffle_half_loopvec"
   "kernel/test_shuffle_float_loopvec"
   "kernel/test_shuffle_long_loopvec"
   "kernel/test_shuffle_ulong_loopvec"
   "kernel/test_shuffle_double_loopvec"
   "kernel/test_as_type_loopvec"
   "kernel/test_kernel_clock_loopvec"
+  "kernel/test_printf_vectors_halfn_loopvec"
   "kernel/test_sizeof_uint_loopvec"
   APPEND PROPERTY LABELS "cuda")
 endif()

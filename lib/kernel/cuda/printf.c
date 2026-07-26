@@ -227,11 +227,8 @@ pocl_cuda_emit_vector_float (const pocl_cuda_printf_conversion *conversion,
   char scalar[8] __attribute__ ((aligned (8)));
   double value;
   if (conversion->length == POCL_CUDA_PRINTF_LENGTH_H)
-    {
-      vprintf ("<unsupported half format>", (char *)raw);
-      return -1;
-    }
-  if (conversion->length == POCL_CUDA_PRINTF_LENGTH_L)
+    value = (double)((const half *)raw)[element];
+  else if (conversion->length == POCL_CUDA_PRINTF_LENGTH_L)
     value = ((const double *)raw)[element];
   else
     value = (double)((const float *)raw)[element];

@@ -11,6 +11,7 @@ pocl_cuda_init_device_ops (struct pocl_device_ops *ops)
   ops->free_queue = pocl_cuda_free_queue;
 
   ops->alloc_mem_obj = pocl_cuda_alloc_mem_obj;
+  ops->alloc_mem_obj_at_create = 1;
   ops->free = pocl_cuda_free;
 
   ops->submit = pocl_cuda_submit;
@@ -104,7 +105,7 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
 
   dev->global_as_id = 1;
   dev->local_as_id = 3;
-  dev->constant_as_id = 1;
+  dev->constant_as_id = 4;
   dev->device_aux_functions = cuda_native_device_aux_funcs;
 
   /* TODO: Get images working */
@@ -195,7 +196,12 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
               int value;
               result = cuDeviceGetAttribute (&value,
                 CU_DEVICE_ATTRIBUTE_READ_ONLY_HOST_REGISTER_SUPPORTED, data->device);
-              data->supports_cu_mem_host_register = value;
+              /* Direct kernel access to externally registered host memory is
+                 opt-in. Device storage plus versioned migrations avoids
+                 exposing host allocation lifetimes to asynchronous kernels. */
+              data->supports_cu_mem_host_register
+                  = value && pocl_get_bool_option (
+                                 "POCL_CUDA_SUPPORTS_CU_MEM_HOST_REGISTER", 0);
               if (CUDA_CHECK_ERROR (result, "cuDeviceGetAttribute"))
                 ret = CL_INVALID_DEVICE;
             } else {
@@ -230,9 +236,10 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
   dev->native_vector_width_long = 1;
   dev->native_vector_width_float = 1;
   dev->native_vector_width_double = 1;
-  dev->preferred_vector_width_half = 0;
-  dev->native_vector_width_half = 0;
+  dev->preferred_vector_width_half = 1;
+  dev->native_vector_width_half = 1;
 
+  dev->half_fp_config = CL_FP_ROUND_TO_NEAREST | CL_FP_INF_NAN;
   dev->single_fp_config = CL_FP_ROUND_TO_NEAREST | CL_FP_ROUND_TO_ZERO
                           | CL_FP_ROUND_TO_INF | CL_FP_FMA | CL_FP_INF_NAN
                           | CL_FP_DENORM;
@@ -345,19 +352,37 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
   dev->max_mem_alloc_size = max (memfree, 128 * 1024 * 1024);
   dev->global_mem_size = memtotal;
 
-  dev->svm_allocation_priority = 0;
-  dev->svm_caps = 0;
+  if (data->supports_managed_memory)
+    {
+      dev->svm_allocation_priority = 2;
+      dev->svm_caps = CL_DEVICE_SVM_COARSE_GRAIN_BUFFER;
+    }
+  else
+    {
+      dev->svm_allocation_priority = 0;
+      dev->svm_caps = 0;
+    }
+
+#ifdef ENABLE_SPIRV
+  dev->supported_spir_v_versions = "SPIR-V_1.0";
+#endif
 
   /* OpenCL 3.0 properties */
   /* Minimum mandated capability */
   dev->atomic_memory_capabilities
-      = CL_DEVICE_ATOMIC_ORDER_RELAXED | CL_DEVICE_ATOMIC_SCOPE_WORK_GROUP;
+      = CL_DEVICE_ATOMIC_ORDER_RELAXED | CL_DEVICE_ATOMIC_ORDER_ACQ_REL
+        | CL_DEVICE_ATOMIC_ORDER_SEQ_CST | CL_DEVICE_ATOMIC_SCOPE_WORK_GROUP
+        | CL_DEVICE_ATOMIC_SCOPE_DEVICE;
   dev->atomic_fence_capabilities = CL_DEVICE_ATOMIC_ORDER_RELAXED
                                    | CL_DEVICE_ATOMIC_ORDER_ACQ_REL
-                                   | CL_DEVICE_ATOMIC_SCOPE_WORK_GROUP;
+                                   | CL_DEVICE_ATOMIC_ORDER_SEQ_CST
+                                   | CL_DEVICE_ATOMIC_SCOPE_WORK_GROUP
+                                   | CL_DEVICE_ATOMIC_SCOPE_DEVICE;
 
-  dev->sub_group_independent_forward_progress = CL_FALSE;
-  dev->max_num_sub_groups = 0;
+  dev->sub_group_independent_forward_progress = CL_TRUE;
+  dev->max_num_sub_groups
+      = (dev->max_work_group_size + data->warp_size - 1) / data->warp_size;
+  dev->wg_collective_func_support = CL_TRUE;
 
   // CUDA kernels have a 4352-byte parameter area on CC >= 2.0 devices, but
   // PoCL appends four implicit uint32 launch parameters: work_dim and the

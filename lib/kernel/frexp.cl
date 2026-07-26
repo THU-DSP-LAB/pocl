@@ -23,7 +23,7 @@
 
 #include "templates.h"
 
-#if !__has_builtin(__builtin_frexpf16)
+#if defined(POCL_CORE_MATH_FP16) || !__has_builtin(__builtin_frexpf16)
 #undef __IF_FP16
 #define __IF_FP16(X)
 #endif

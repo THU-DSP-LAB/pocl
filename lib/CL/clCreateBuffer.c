@@ -30,6 +30,28 @@
 #include "pocl_tensor_util.h"
 #include "pocl_util.h"
 
+static cl_int
+pocl_alloc_memobject_on_eager_devices (cl_context context, cl_mem mem,
+                                       void *host_ptr)
+{
+  for (unsigned i = 0; i < context->num_devices; ++i)
+    {
+      cl_device_id dev = context->devices[i];
+      if (!dev->ops->alloc_mem_obj_at_create)
+        continue;
+
+      pocl_mem_identifier *p = &mem->device_ptrs[dev->global_mem_id];
+      if (p->mem_ptr != NULL)
+        continue;
+
+      cl_int err = dev->ops->alloc_mem_obj (dev, mem, host_ptr);
+      if (err != CL_SUCCESS)
+        return err;
+    }
+
+  return CL_SUCCESS;
+}
+
 cl_mem
 pocl_create_memobject (cl_context context,
                        cl_mem_flags flags,
@@ -263,6 +285,10 @@ pocl_create_memobject (cl_context context,
       mem->mem_host_ptr_version = 1;
       mem->latest_version = 1;
     }
+
+  errcode = pocl_alloc_memobject_on_eager_devices (context, mem, host_ptr);
+  POCL_GOTO_ERROR_ON (errcode != CL_SUCCESS, errcode,
+                      "Failed to allocate memory object before creation\n");
 
   goto SUCCESS;
 

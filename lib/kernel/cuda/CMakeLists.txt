@@ -46,6 +46,27 @@ if(CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_kernel_clock")
   list(APPEND KERNEL_SOURCES cuda/kernel_clock.ll)
 endif()
 
+if(CUDA_DEVICE_FEATURES_30 MATCHES "__opencl_c_work_group_collective_functions")
+  list(APPEND KERNEL_SOURCES work_group.cl)
+endif()
+
+if(CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_fp16")
+  foreach(FILE IN ITEMS
+      acosf16.cl        atan2f16.cl      exp10f16.cl      hypotf16.cl
+      log2p1f16.cl      sinhf16.cl       tgammaf16.cl     acoshf16.cl
+      atan2pif16.cl     cosf16.cl        exp10m1f16.cl    lgammaf16.cl
+      logf16.cl         sinpif16.cl      acospif16.cl     atanf16.cl
+      coshf16.cl        exp2f16.cl       log10f16.cl      powf16.cl
+      asinf16.cl        atanhf16.cl      cospif16.cl      exp2m1f16.cl
+      log10p1f16.cl     tanf16.cl        asinhf16.cl      atanpif16.cl
+      erfcf16.cl        expf16.cl        log1pf16.cl      sincosf16.cl
+      tanhf16.cl        asinpif16.cl     cbrtf16.cl       erff16.cl
+      expm1f16.cl       log2f16.cl       sinf16.cl        tanpif16.cl
+      rsqrtf16.cl       additionalf16.cl  promotedf16.cl)
+    list(APPEND KERNEL_SOURCES "core-math/${FILE}")
+  endforeach()
+endif()
+
 foreach(FILE
   async_work_group_copy.cl async_work_group_strided_copy.cl
   get_global_id.c get_global_size.c get_group_id.c
@@ -89,7 +110,9 @@ set(CLANG_FLAGS "-ffreestanding" "-emit-llvm" "-target" "${LLVM_TARGET}")
 set(KERNEL_CL_FLAGS "-Xclang" "-cl-std=CL${CUDA_DEVICE_CL_STD}" "-D__OPENCL_C_VERSION__=${CUDA_DEVICE_CL_VERSION}" "-Xclang" "-cl-ext=all" ${KERNEL_CL_FLAGS})
 
 set(LLC_FLAGS "")
-set(DEVICE_CL_FLAGS "-D__OPENCL_VERSION__=${CUDA_DEVICE_CL_VERSION} -Dcl_khr_int64")
+set(DEVICE_CL_FLAGS
+  "-D__OPENCL_VERSION__=${CUDA_DEVICE_CL_VERSION} -Dcl_khr_int64 \
+  -DPOCL_CORE_MATH_FP16")
 separate_arguments(CUDA_DEVICE_EXTENSIONS)
 foreach(EXT ${CUDA_DEVICE_EXTENSIONS})
   set(DEVICE_CL_FLAGS "${DEVICE_CL_FLAGS} -D${EXT}")

@@ -61,8 +61,8 @@ pocl_cuda_alloc_mem_obj (cl_device_id device, cl_mem mem, void *host_ptr)
     {
       if (mem->mem_host_ptr_is_svm)
         {
-          /* Already checked by pocl_cuda_svm_alloc(). */
-          assert(device->svm_caps & CL_DEVICE_SVM_FINE_GRAIN_BUFFER);
+          assert (device->svm_caps & (CL_DEVICE_SVM_COARSE_GRAIN_BUFFER
+                                      | CL_DEVICE_SVM_FINE_GRAIN_BUFFER));
 
           p->version = mem->mem_host_ptr_version;
           p->mem_ptr = mem->mem_host_ptr;
@@ -158,6 +158,12 @@ pocl_cuda_free (cl_device_id device, cl_mem mem_obj)
 {
   cuCtxSetCurrent (((pocl_cuda_device_data_t *)device->data)->context);
   pocl_mem_identifier *p = &mem_obj->device_ptrs[device->global_mem_id];
+
+  if (p->extra_ptr != NULL)
+    {
+      CUresult result = cuCtxSynchronize ();
+      CUDA_CHECK_ABORT (result, "cuCtxSynchronize before freeing host memory");
+    }
 
   if (mem_obj->flags & CL_MEM_USE_HOST_PTR)
     {

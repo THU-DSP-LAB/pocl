@@ -1781,7 +1781,7 @@ _CL_OVERLOADABLE half tanpi(half x){
   }
 
   // only exceptional value is x=-0
-  if (u == 0x8000) return -0.0f16;
+  if (u == 0x8000) return (half)-0.0f;
 
   ushort i1 = u >> 5;
   ushort i2 = ((u >> 10) << 5) | (u & 0x1f);

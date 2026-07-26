@@ -95,6 +95,7 @@ POP_COMPILER_DIAGS
 
 #include "ProgramScopeVariables.h"
 #include "linker.h"
+#include "pocl_llvm_address_spaces.hh"
 
 //#define DEBUG_POCL_LLVM_API
 
@@ -187,6 +188,11 @@ static llvm::Module *getKernelLibrary(cl_device_id device,
 static bool generateProgramBC(PoclLLVMContextData *Context, llvm::Module *Mod,
                              cl_program Program, cl_device_id Device,
                              unsigned device_i, std::string &Log) {
+
+  if (Program->program_il != nullptr
+      && pocl_llvm_remap_address_space(
+          *Mod, SPIR_ADDRESS_SPACE_CONSTANT, Device->constant_as_id, Log))
+    return true;
 
   llvm::Module *BuiltinLib = getKernelLibrary(Device, Context);
   if (BuiltinLib == nullptr)

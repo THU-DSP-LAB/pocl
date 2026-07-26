@@ -26,7 +26,7 @@
 
 #if __has_builtin(__builtin_exp10)
 
-#if !__has_builtin(__builtin_exp10f16)
+#if defined(POCL_CORE_MATH_FP16) || !__has_builtin(__builtin_exp10f16)
 #undef __IF_FP16
 #define __IF_FP16(X)
 #endif

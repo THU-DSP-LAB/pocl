@@ -38,6 +38,7 @@
 
 static const char *PrintfIR = R"(
 @format = addrspace(4) constant [14 x i8] c"%v4hlf %v16ld\00"
+@half_format = addrspace(4) constant [6 x i8] c"%v4hf\00"
 
 declare void @__cl_va_arg(ptr, ptr, i32)
 declare i32 @vprintf(ptr addrspace(4), ptr)
@@ -51,14 +52,16 @@ entry:
   ret i32 %result
 }
 
-define ptx_kernel void @printf_kernel() {
+define ptx_kernel void @printf_kernel(float %value) {
 entry:
   %result = call i32 (ptr addrspace(4), ...) @printf(
       ptr addrspace(4) @format,
       <4 x float> <float 1.0, float 2.0, float 3.0, float 4.0>,
       <16 x i64> zeroinitializer)
   %second = call i32 (ptr addrspace(4), ...) @printf(
-      ptr addrspace(4) @format, i32 42)
+      ptr addrspace(4) @format, i32 42, float %value)
+  %third = call i32 (ptr addrspace(4), ...) @printf(
+      ptr addrspace(4) @half_format, <4 x half> zeroinitializer)
   ret void
 }
 )";
@@ -122,6 +125,8 @@ static bool validateKernel(const llvm::Module &Module) {
   const llvm::Value *ArgumentBuffer = nullptr;
   unsigned Allocations = 0;
   unsigned Calls = 0;
+  unsigned FloatingPromotions = 0;
+  unsigned HalfVectorStores = 0;
   for (const llvm::BasicBlock &Block : *Kernel)
     for (const llvm::Instruction &Instruction : Block) {
       if (const auto *Allocation =
@@ -142,9 +147,23 @@ static bool validateKernel(const llvm::Module &Module) {
         if (Call->getArgOperand(1) != ArgumentBuffer)
           return fail("printf calls do not share their argument buffer");
         ++Calls;
+      } else if (const auto *Extension =
+                     llvm::dyn_cast<llvm::FPExtInst>(&Instruction)) {
+        if (!Extension->getSrcTy()->isFloatTy() ||
+            !Extension->getDestTy()->isDoubleTy())
+          return fail("printf argument has an unexpected FP promotion");
+        ++FloatingPromotions;
+      } else if (const auto *Store =
+                     llvm::dyn_cast<llvm::StoreInst>(&Instruction)) {
+        const llvm::Type *Type = Store->getValueOperand()->getType();
+        const auto *Vector = llvm::dyn_cast<llvm::FixedVectorType>(Type);
+        if (Vector && Vector->getElementType()->isHalfTy() &&
+            Vector->getNumElements() == 4)
+          ++HalfVectorStores;
       }
     }
-  return Allocations == 1 && Calls == 2
+  return Allocations == 1 && Calls == 3 && FloatingPromotions == 1 &&
+                 HalfVectorStores == 1
              ? true
              : fail("kernel does not contain one shared argument buffer");
 }

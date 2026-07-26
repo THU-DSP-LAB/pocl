@@ -82,7 +82,7 @@ cudnnHandle_t cudnn;
 
 #define CUDA_BUILTIN_KERNELS 6
 #define CUDA_LATEST_CONFORMANCE_VERSION "v2026-07-17-00"
-#define CUDA_BINARY_FORMAT_VERSION "6"
+#define CUDA_BINARY_FORMAT_VERSION "8"
 static const char *cuda_builtin_kernels[CUDA_BUILTIN_KERNELS]
     = { "pocl.mul.i32",
         "pocl.add.i32",
@@ -159,9 +159,8 @@ typedef struct pocl_cuda_event_data_s
   CUevent start;
   CUevent end;
   volatile int events_ready;
-  cl_int *ext_event_flag;
   pthread_cond_t event_cond;
-  volatile unsigned num_ext_events;
+  unsigned num_ext_events;
   int use_threads;
 } pocl_cuda_event_data_t;
 

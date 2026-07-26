@@ -53,7 +53,7 @@ _CL_OVERLOADABLE half acos (half x)
 
   if (au >= 0x3f800000u) { // NaN, Inf, or |x| >= 1
     if (au == 0x3f800000u)
-      return (u == 0x3f800000u) ? 0.0f16 : 0x1.921fb6p+1f;
+      return (u == 0x3f800000u) ? (half)0.0f : 0x1.921fb6p+1f;
     // otherwise return NaN
     return NAN;
   }

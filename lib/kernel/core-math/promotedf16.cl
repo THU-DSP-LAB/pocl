@@ -61,10 +61,12 @@ DEFINE_FP16_EXPR_V_VV (remainder)
 half _CL_OVERLOADABLE
 modf (half x, private half *iptr)
 {
-  float fip;
-  half r = (half)modf ((float)x, &fip);
-  *iptr = (half)fip;
-  return r;
+  float promoted = (float)x;
+  float integral = trunc (promoted);
+  *iptr = (half)integral;
+  if (isinf (x))
+    return copysign ((half)0, x);
+  return copysign ((half)(promoted - integral), x);
 }
 
 #define IMPLEMENT_FP16_MODF_AS(TYPE, AS)                                     \

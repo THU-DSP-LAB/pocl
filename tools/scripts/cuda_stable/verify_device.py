@@ -17,16 +17,25 @@ EXPECTED_EXTENSIONS = frozenset(
         "cl_khr_global_int32_extended_atomics",
         "cl_khr_local_int32_base_atomics",
         "cl_khr_local_int32_extended_atomics",
+        "cl_khr_int64_base_atomics",
+        "cl_khr_int64_extended_atomics",
+        "cl_khr_il_program",
         "cl_khr_integer_dot_product",
         "cl_khr_extended_bit_ops",
+        "cl_khr_fp16",
         "cl_ext_buffer_device_address",
         "cl_khr_kernel_clock",
+        "cl_khr_subgroups",
         "cl_khr_fp64",
         "cl_nv_device_attribute_query",
     }
 )
 EXPECTED_FEATURES = frozenset(
     {
+        "__opencl_c_atomic_order_acq_rel",
+        "__opencl_c_atomic_order_seq_cst",
+        "__opencl_c_atomic_scope_device",
+        "__opencl_c_fp16",
         "__opencl_c_fp64",
         "__opencl_c_int64",
         "__opencl_c_integer_dot_product_input_4x8bit",
@@ -34,11 +43,14 @@ EXPECTED_FEATURES = frozenset(
         "__opencl_c_kernel_clock_scope_device",
         "__opencl_c_kernel_clock_scope_work_group",
         "__opencl_c_kernel_clock_scope_sub_group",
+        "__opencl_c_subgroups",
+        "__opencl_c_work_group_collective_functions",
     }
 )
 EXTENSION_VERSIONS = {
     "cl_khr_integer_dot_product": "2.0.0",
     "cl_ext_buffer_device_address": "1.0.2",
+    "cl_khr_il_program": "2.1.0",
 }
 EXPECTED_EXTENSION_VERSIONS = frozenset(
     f"{name}@{EXTENSION_VERSIONS.get(name, '1.0.0')}" for name in EXPECTED_EXTENSIONS
@@ -60,20 +72,29 @@ CUDA_SINGLE_FP_CONFIG = (
     | CL_FP_FMA
 )
 CUDA_DOUBLE_FP_CONFIG = CUDA_SINGLE_FP_CONFIG
+CUDA_HALF_FP_CONFIG = CL_FP_INF_NAN | CL_FP_ROUND_TO_NEAREST
 EXPECTED_SCALARS = {
     "image_support": 0,
-    "svm_capabilities": 0,
+    "svm_capabilities": 1,
     "queue_properties": 1 << 1,
     "max_parameter_size": 4352 - 4 * 4,
-    "max_num_sub_groups": 0,
-    "subgroup_forward_progress": 0,
-    "atomic_memory_capabilities": (1 << 0) | (1 << 4),
-    "atomic_fence_capabilities": (1 << 0) | (1 << 1) | (1 << 4),
+    "max_num_sub_groups": 32,
+    "subgroup_forward_progress": 1,
+    "atomic_memory_capabilities": (
+        (1 << 0) | (1 << 1) | (1 << 2) | (1 << 4) | (1 << 5)
+    ),
+    "atomic_fence_capabilities": (
+        (1 << 0) | (1 << 1) | (1 << 2) | (1 << 4) | (1 << 5)
+    ),
     "non_uniform_support": 0,
+    "work_group_collective_support": 1,
     "generic_address_support": 0,
     "pipe_support": 0,
     "single_fp_config": CUDA_SINGLE_FP_CONFIG,
     "double_fp_config": CUDA_DOUBLE_FP_CONFIG,
+    "half_fp_config": CUDA_HALF_FP_CONFIG,
+    "preferred_vector_width_half": 1,
+    "native_vector_width_half": 1,
 }
 
 
@@ -89,15 +110,19 @@ def validate_strings(device: DeviceSnapshot) -> list[str]:
     expected_strings = {
         "name": "NVIDIA GeForce RTX 4090",
         "opencl_c_version": "OpenCL C 1.2 PoCL",
-        "il_version": "",
+        "il_version": "SPIR-V_1.0",
         "latest_conformance": EXPECTED_CONFORMANCE_VERSION,
     }
     for field, expected in expected_strings.items():
         actual = getattr(device, field)
         if actual != expected:
             failures.append(f"{field}: expected {expected!r}, found {actual!r}")
-    if "OpenCL 3.0" not in device.device_version or "CUDA-sm_89-v6" not in device.device_version:
-        failures.append(f"device_version does not identify OpenCL 3.0 CUDA-sm_89-v6: {device.device_version}")
+    if "OpenCL 3.0" not in device.device_version or "CUDA-sm_89-v8" not in device.device_version:
+        failures.append(f"device_version does not identify OpenCL 3.0 CUDA-sm_89-v8: {device.device_version}")
+    if device.il_versions != ("SPIR-V@1.0.0",):
+        failures.append(
+            f"il_versions: expected ['SPIR-V@1.0.0'], found {list(device.il_versions)}"
+        )
     return failures
 
 
@@ -136,10 +161,10 @@ def validate_capabilities(device: DeviceSnapshot) -> list[str]:
             "kernel_clock_capabilities: expected device, work-group, and "
             f"sub-group scopes (7), found {device.kernel_clock_capabilities}"
         )
-    if device.half_fp_config != 0 or device.half_fp_query_error != 0:
+    if device.half_fp_config != CUDA_HALF_FP_CONFIG or device.half_fp_query_error != 0:
         failures.append(
-            "CL_DEVICE_HALF_FP_CONFIG must return zero successfully when cl_khr_fp16 "
-            f"is absent; value={device.half_fp_config}, error={device.half_fp_query_error}"
+            "CL_DEVICE_HALF_FP_CONFIG must expose round-to-nearest and INF/NAN "
+            f"support; value={device.half_fp_config}, error={device.half_fp_query_error}"
         )
     for field, expected in EXPECTED_SCALARS.items():
         actual = getattr(device, field)

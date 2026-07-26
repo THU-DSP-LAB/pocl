@@ -24,6 +24,11 @@
 
 #include "templates.h"
 
+#ifdef POCL_CORE_MATH_FP16
+#undef __IF_FP16
+#define __IF_FP16(X)
+#endif
+
 #define __builtin_isnormalf __builtin_isnormal
 #define __builtin_isnormalf16 __builtin_isnormal
 

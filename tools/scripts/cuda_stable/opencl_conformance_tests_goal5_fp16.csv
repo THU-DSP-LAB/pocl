@@ -1,0 +1,11 @@
+# PoCL NVIDIA Goal 5 FP16 capability and ABI coverage.
+# Full non-wimpy Conversions and Math accuracy shards use separate manifests.
+Compiler FP16 Contract,compiler/test_compiler
+Half Scalar and Vector Ops,half/test_half
+FP16 Relationals,relationals/test_relationals
+FP16 Common Vector Scalar,commonfns/test_commonfns fminf fmaxf
+FP16 Vector ABI,vectors/test_vectors
+FP16 Printf,printf/test_printf
+FP16 SPIR-V IL,spirv_new/test_spirv_new
+FP16 Half3 ABI,math_brute_force/test_bruteforce -f -d -l -3 -s acos
+FP16 Math Link Check,math_brute_force/test_bruteforce -f -d -l

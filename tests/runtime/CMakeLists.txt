@@ -47,6 +47,7 @@ set(C_PROGRAMS_TO_BUILD test_clFinish test_clGetDeviceInfo test_clGetEventInfo
   test_kernel_call_kernel
   test_unused_constant_arg
   test_use_host_ptr_rect
+  test_use_host_ptr_versioning
   test_exit_with_live_queue
   test_clSetMemObjectDestructorCallback test_dbk_jpeg
   test_cl_pocl_content_size test_cl_pocl_content_size_migration
@@ -122,6 +123,10 @@ add_test_pocl(NAME "runtime/test_unused_constant_arg"
 
 add_test_pocl(NAME "runtime/test_use_host_ptr_rect"
               COMMAND "test_use_host_ptr_rect"
+              WORKITEM_HANDLER "loopvec")
+
+add_test_pocl(NAME "runtime/test_use_host_ptr_versioning"
+              COMMAND "test_use_host_ptr_versioning"
               WORKITEM_HANDLER "loopvec")
 
 add_test_pocl(NAME "runtime/test_exit_with_live_queue"
@@ -493,6 +498,7 @@ set_property(TEST
   "runtime/test_kernel_call_kernel"
   "runtime/test_unused_constant_arg"
   "runtime/test_use_host_ptr_rect"
+  "runtime/test_use_host_ptr_versioning"
   "runtime/test_exit_with_live_queue"
   "runtime/test_buffer-image-copy"
   "runtime/clSetEventCallback"
@@ -508,6 +514,7 @@ set_property(TEST
   "runtime/test_device_address"
   "runtime/test_compile_n_link"
   "runtime/test_svm"
+  "runtime/test_subgroup_queries"
   "runtime/test_subbuffers"
   "runtime/test_queue_creation_with_hints"
   APPEND PROPERTY LABELS "cuda")

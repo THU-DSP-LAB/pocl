@@ -73,6 +73,9 @@ CL_API_SUFFIX__VERSION_1_2
   if (strcmp (func_name, "clCreateProgramWithILKHR") == 0)
     return (void *)&POname(clCreateProgramWithIL);
 
+  if (strcmp (func_name, "clGetKernelSubGroupInfoKHR") == 0)
+    return (void *)&POname (clGetKernelSubGroupInfo);
+
   /* cl_khr_command_buffer */
   if (strcmp (func_name, "clCreateCommandBufferKHR") == 0)
     return (void *)&POname (clCreateCommandBufferKHR);

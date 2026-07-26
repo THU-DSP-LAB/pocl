@@ -34,24 +34,15 @@ pocl_cuda_notify (cl_device_id device, cl_event event, cl_event finished)
   if (finished->queue && finished->queue->device->ops == device->ops)
     return;
 
-  if (event->status == CL_QUEUED)
+  pocl_cuda_event_data_t *event_data = (pocl_cuda_event_data_t *)event->data;
+  /* A dependency can finish before the CUDA submit callback has initialized
+   * or counted it. In that case pocl_broadcast removes it from the wait list,
+   * so the submit thread will never include it in num_ext_events. */
+  if (event_data == NULL || event_data->num_ext_events == 0)
     return;
 
-  pocl_cuda_event_data_t *event_data = (pocl_cuda_event_data_t *)event->data;
-
-  assert (event_data);
-  assert (event_data->num_ext_events > 0);
-  assert (event_data->ext_event_flag);
-
-  /* If dependency failed, so should we */
-  /* TODO: This isn't true if this is an implicit dependency */
-  if (finished->status < 0)
-    event->status = -1;
-
-  /* Decrement external event counter */
-  /* Trigger flag if none left */
-  if (!--event_data->num_ext_events)
-    *event_data->ext_event_flag = 1;
+  if (--event_data->num_ext_events == 0)
+    PTHREAD_CHECK (pthread_cond_broadcast (&event_data->event_cond));
 }
 
 void
@@ -70,37 +61,6 @@ pocl_cuda_finalize_command (cl_device_id device, cl_event event)
   cuCtxSetCurrent (((pocl_cuda_device_data_t *)device->data)->context);
   result = cuEventSynchronize (event_data->end);
   CUDA_CHECK_ABORT (result, "cuEventSynchronize");
-
-  if (event->command_type == CL_COMMAND_NDRANGE_KERNEL
-      || event->command_type == CL_COMMAND_TASK)
-    {
-      if (!((pocl_cuda_device_data_t *)device->data)->supports_cu_mem_host_register)
-        {
-          /* On ARM with USE_HOST_PTR, perform explict copies back from device */
-          cl_kernel kernel = event->command->command.run.kernel;
-          pocl_argument *arguments = event->command->command.run.arguments;
-          unsigned i;
-          pocl_kernel_metadata_t *meta = kernel->meta;
-          for (i = 0; i < meta->num_args; i++)
-            {
-              if (meta->arg_info[i].type == POCL_ARG_TYPE_POINTER)
-                {
-                  if (!ARG_IS_LOCAL (meta->arg_info[i]) && arguments[i].value)
-                    {
-                      cl_mem mem = *(void **)arguments[i].value;
-                      if (mem->flags & CL_MEM_USE_HOST_PTR)
-                        {
-                          CUdeviceptr ptr
-                              = (CUdeviceptr)mem->device_ptrs[device->global_mem_id]
-                                    .mem_ptr;
-                          cuMemcpyDtoH (mem->mem_host_ptr, ptr, mem->size);
-                          cuStreamSynchronize (0);
-                        }
-                    }
-                }
-            }
-        }
-    }
 
   /* Handle failed events */
 
@@ -217,11 +177,6 @@ pocl_cuda_free_event_data (cl_event event)
       if (event->queue->properties & CL_QUEUE_PROFILING_ENABLE)
         cuEventDestroy (event_data->start);
       cuEventDestroy (event_data->end);
-      if (event_data->ext_event_flag)
-        {
-          CUresult result = cuMemFreeHost (event_data->ext_event_flag);
-          CUDA_CHECK_ERROR (result, "pocl_cuda_free_event_data cuMemFreeHost");
-        }
       free (event->data);
     }
 }

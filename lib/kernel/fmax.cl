@@ -24,6 +24,16 @@
 
 #include "templates.h"
 
+#ifdef POCL_CORE_MATH_FP16
+#undef __IF_FP16
+#define __IF_FP16(X)
+#endif
+
 DEFINE_BUILTIN_V_VV(fmax)
+
+#ifdef POCL_CORE_MATH_FP16
+#undef __IF_FP16
+#define __IF_FP16(X) X
+#endif
 
 DEFINE_EXPR_V_VS(fmax, fmax(a, (vtype)b))

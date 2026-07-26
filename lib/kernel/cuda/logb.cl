@@ -2,6 +2,11 @@
 
 #include "cuda-templates.h"
 
+#ifdef POCL_CORE_MATH_FP16
+#undef __IF_FP16
+#define __IF_FP16(X)
+#endif
+
 float __nv_logbf (float);
 double __nv_logb (double);
 

@@ -27,6 +27,7 @@ uint _pocl_warp_size;
 size_t _CL_OVERLOADABLE get_local_id (unsigned int dimindx);
 size_t _CL_OVERLOADABLE get_local_linear_id (void);
 size_t _CL_OVERLOADABLE get_local_size (unsigned int dimindx);
+uint _pocl_sub_group_active_mask (void);
 
 void _CL_OVERLOADABLE
 sub_group_barrier (cl_mem_fence_flags flags, memory_scope scope)
@@ -38,9 +39,11 @@ sub_group_barrier (cl_mem_fence_flags flags, memory_scope scope)
 uint _CL_OVERLOADABLE
 get_sub_group_size (void)
 {
-  /* XXX: ideally this would save popcnt(__activemask()) before the kernel
-   * starts and return the actual number of active lanes in non-full warps */
-  return get_max_sub_group_size();
+  uint max_size = get_max_sub_group_size ();
+  size_t first = (get_local_linear_id () / max_size) * max_size;
+  size_t remaining = get_local_size (0) * get_local_size (1)
+                     * get_local_size (2) - first;
+  return remaining < max_size ? (uint)remaining : max_size;
 }
 
 uint _CL_OVERLOADABLE
@@ -98,17 +101,28 @@ __IF_FP64 (SUB_GROUP_BROADCAST_T (double))
 #define SUB_GROUP_SCAN_INCLUSIVE_OT(OPNAME, OPERATION, TYPE)                  \
   TYPE _CL_OVERLOADABLE sub_group_scan_inclusive##OPNAME (TYPE val)           \
   {                                                                           \
-    uint lane = get_sub_group_local_id ();                                    \
-    for (uint i = 1; i <= (get_max_sub_group_size () / 2); i *= 2)            \
+    uint active_mask = _pocl_sub_group_active_mask ();                        \
+    uint own_lane = get_sub_group_local_id ();                                \
+    TYPE result = val;                                                        \
+    bool initialized = false;                                                 \
+    for (uint lane = 0; lane < get_max_sub_group_size (); ++lane)             \
       {                                                                       \
-        TYPE a = val;                                                         \
-        TYPE b = sub_group_shuffle (a, (uint)(lane - i));                     \
-        if (lane >= i)                                                        \
+        TYPE b = sub_group_shuffle (val, lane);                               \
+        if (lane <= own_lane && (active_mask & (1u << lane)))                 \
           {                                                                   \
-            val = OPERATION;                                                  \
+            if (!initialized)                                                 \
+              {                                                               \
+                result = b;                                                   \
+                initialized = true;                                           \
+              }                                                               \
+            else                                                              \
+              {                                                               \
+                TYPE a = result;                                              \
+                result = OPERATION;                                           \
+              }                                                               \
           }                                                                   \
       }                                                                       \
-    return val;                                                               \
+    return result;                                                            \
   }
 
 #define SUB_GROUP_SCAN_INCLUSIVE_T(OPNAME, OPERATION)                         \
@@ -127,14 +141,19 @@ SUB_GROUP_SCAN_INCLUSIVE_T (_max, (a > b ? a : b))
 #define SUB_GROUP_SCAN_EXCLUSIVE_OT(OPNAME, OPERATION, TYPE, ID)              \
   TYPE _CL_OVERLOADABLE sub_group_scan_exclusive##OPNAME (TYPE val)           \
   {                                                                           \
-    val = sub_group_scan_inclusive##OPNAME (val);                             \
-    uint lane = get_sub_group_local_id ();                                    \
-    val = sub_group_shuffle (val, lane - 1);                                  \
-    if (lane == 0)                                                            \
+    uint active_mask = _pocl_sub_group_active_mask ();                        \
+    uint own_lane = get_sub_group_local_id ();                                \
+    TYPE result = ID;                                                         \
+    for (uint lane = 0; lane < get_max_sub_group_size (); ++lane)             \
       {                                                                       \
-        val = ID;                                                             \
+        TYPE b = sub_group_shuffle (val, lane);                               \
+        if (lane < own_lane && (active_mask & (1u << lane)))                  \
+          {                                                                   \
+            TYPE a = result;                                                  \
+            result = OPERATION;                                               \
+          }                                                                   \
       }                                                                       \
-    return val;                                                               \
+    return result;                                                            \
   }
 
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, int, 0)

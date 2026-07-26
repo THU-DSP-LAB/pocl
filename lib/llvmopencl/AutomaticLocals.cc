@@ -23,7 +23,9 @@
 
 #include "CompilerWarnings.h"
 IGNORE_COMPILER_WARNING("-Wmaybe-uninitialized")
+#include <algorithm>
 #include <llvm/ADT/Twine.h>
+#include <llvm/ADT/SmallVector.h>
 POP_COMPILER_DIAGS
 IGNORE_COMPILER_WARNING("-Wunused-parameter")
 #include <llvm/IR/Argument.h>
@@ -37,6 +39,7 @@ IGNORE_COMPILER_WARNING("-Wunused-parameter")
 #include <llvm/Pass.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/ErrorHandling.h>
+#include <llvm/Support/MathExtras.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 
 #include "AutomaticLocals.h"
@@ -55,9 +58,101 @@ using namespace llvm;
 
 using FunctionVec = std::vector<llvm::Function *>;
 
+struct WorkGroupAllocaLayout {
+  uint64_t Bytes;
+  uint64_t Alignment;
+};
+
+static SmallVector<CallInst *, 4> findWorkGroupAllocas(Function *F) {
+  SmallVector<CallInst *, 4> Calls;
+  for (BasicBlock &BB : *F) {
+    for (Instruction &I : BB) {
+      auto *Call = dyn_cast<CallInst>(&I);
+      if (Call == nullptr)
+        continue;
+      Function *Callee = Call->getCalledFunction();
+      if (Callee == nullptr || Callee->getName() != "__pocl_work_group_alloca")
+        continue;
+      Calls.push_back(Call);
+    }
+  }
+  return Calls;
+}
+
+static WorkGroupAllocaLayout
+getWorkGroupAllocaLayout(CallInst *Call, uint64_t MaxWorkGroupSize) {
+  auto *ElementArg = dyn_cast<ConstantInt>(Call->getArgOperand(0));
+  auto *AlignArg = dyn_cast<ConstantInt>(Call->getArgOperand(1));
+  auto *ExtraArg = dyn_cast<ConstantInt>(Call->getArgOperand(2));
+  if (!ElementArg || !AlignArg || !ExtraArg)
+    report_fatal_error("SPMD work-group alloca arguments must be constants");
+
+  uint64_t ElementSize = ElementArg->getZExtValue();
+  uint64_t Alignment = AlignArg->getZExtValue();
+  uint64_t ExtraBytes = ExtraArg->getZExtValue();
+  if (ElementSize == 0 || !isPowerOf2_64(Alignment))
+    report_fatal_error("invalid SPMD work-group alloca size or alignment");
+  if (ElementSize > (UINT64_MAX - ExtraBytes) / MaxWorkGroupSize)
+    report_fatal_error("SPMD work-group alloca size overflow");
+
+  return {ElementSize * MaxWorkGroupSize + ExtraBytes, Alignment};
+}
+
+static void replaceWorkGroupAlloca(CallInst *Call, GlobalVariable *Storage) {
+  Value *Replacement = Storage;
+  if (Storage->getType() != Call->getType())
+    Replacement = new AddrSpaceCastInst(Storage, Call->getType(), "", Call);
+  Call->replaceAllUsesWith(Replacement);
+  Call->eraseFromParent();
+}
+
+static GlobalVariable *
+createWorkGroupScratch(Function *F, const WorkGroupAllocaLayout &Layout) {
+  Module *M = F->getParent();
+  ArrayType *StorageType =
+      ArrayType::get(Type::getInt8Ty(M->getContext()), Layout.Bytes);
+  auto *Storage = new GlobalVariable(
+      *M, StorageType, false, GlobalValue::InternalLinkage,
+      UndefValue::get(StorageType), "__pocl_wg_scratch." + F->getName(), nullptr,
+      GlobalValue::NotThreadLocal, SPIR_ADDRESS_SPACE_LOCAL);
+  Storage->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+  Storage->setAlignment(Align(Layout.Alignment));
+  return Storage;
+}
+
+static void lowerWorkGroupAllocas(Function *F) {
+  bool IsSPMD = false;
+  getModuleBoolMetadata(*F->getParent(), "device_is_spmd", IsSPMD);
+  if (!IsSPMD)
+    return;
+
+  unsigned long MaxWorkGroupSize = 0;
+  getModuleIntMetadata(*F->getParent(), "device_max_wg_size",
+                       MaxWorkGroupSize);
+  if (MaxWorkGroupSize == 0)
+    report_fatal_error("missing device_max_wg_size for SPMD work-group alloca");
+
+  SmallVector<CallInst *, 4> Calls = findWorkGroupAllocas(F);
+  if (Calls.empty())
+    return;
+
+  WorkGroupAllocaLayout Scratch = {0, 1};
+  for (CallInst *Call : Calls) {
+    WorkGroupAllocaLayout Current =
+        getWorkGroupAllocaLayout(Call, MaxWorkGroupSize);
+    Scratch.Bytes = std::max(Scratch.Bytes, Current.Bytes);
+    Scratch.Alignment = std::max(Scratch.Alignment, Current.Alignment);
+  }
+
+  GlobalVariable *Storage = createWorkGroupScratch(F, Scratch);
+  for (CallInst *Call : Calls)
+    replaceWorkGroupAlloca(Call, Storage);
+}
+
 static Function *processAutomaticLocals(Function *F, unsigned long Strategy) {
 
   Module *M = F->getParent();
+  lowerWorkGroupAllocas(F);
 
   SmallVector<GlobalVariable *, 8> Locals;
 

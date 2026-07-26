@@ -70,7 +70,7 @@ POname(clEnqueueSVMMap) (cl_command_queue command_queue,
       /* If it's nullptr, it must be a system allocation. */
       assert (svm_ptr_pocl->shadow_cl_mem != NULL);
       POname (clEnqueueMapBuffer (
-          command_queue, svm_ptr_pocl->shadow_cl_mem, CL_FALSE, 0 /* TODO */,
+          command_queue, svm_ptr_pocl->shadow_cl_mem, CL_FALSE, map_flags,
           (char *)svm_ptr - (char *)svm_ptr_pocl->vm_ptr, size,
           num_events_in_wait_list, event_wait_list, event, &errcode));
       if (errcode != CL_SUCCESS)
@@ -86,4 +86,3 @@ POname(clEnqueueSVMMap) (cl_command_queue command_queue,
 
 }
 POsym(clEnqueueSVMMap)
-

@@ -1,0 +1,108 @@
+#
+# Goal 5 FP16-only complete Conversions and Math CTS coverage.
+# CTS commit: 7c2441961271cc6a745a83725ba1f6efd6c2fbc7
+# No row enables wimpy mode or restricts Math vector widths.
+#
+FP16 Conversions Full 0061-0070,conversions/test_conversions 61 10
+FP16 Conversions Full 0171-0180,conversions/test_conversions 171 10
+FP16 Conversions Full 0281-0290,conversions/test_conversions 281 10
+FP16 Conversions Full 0391-0400,conversions/test_conversions 391 10
+FP16 Conversions Full 0501-0510,conversions/test_conversions 501 10
+FP16 Conversions Full 0611-0620,conversions/test_conversions 611 10
+FP16 Conversions Full 0661-0670,conversions/test_conversions 661 10
+FP16 Conversions Full 0671-0680,conversions/test_conversions 671 10
+FP16 Conversions Full 0681-0690,conversions/test_conversions 681 10
+FP16 Conversions Full 0691-0700,conversions/test_conversions 691 10
+FP16 Conversions Full 0701-0710,conversions/test_conversions 701 10
+FP16 Conversions Full 0711-0715,conversions/test_conversions 711 5
+FP16 Conversions Full 0746-0750,conversions/test_conversions 746 5
+FP16 Conversions Full 0801-0805,conversions/test_conversions 801 5
+FP16 Conversions Full 0886-0895,conversions/test_conversions 886 10
+FP16 Conversions Full 0996-1005,conversions/test_conversions 996 10
+FP16 Math Full acos,math_brute_force/test_bruteforce -f -d -r acos
+FP16 Math Full acosh,math_brute_force/test_bruteforce -f -d -r acosh
+FP16 Math Full acospi,math_brute_force/test_bruteforce -f -d -r acospi
+FP16 Math Full add,math_brute_force/test_bruteforce -f -d -r add
+FP16 Math Full asin,math_brute_force/test_bruteforce -f -d -r asin
+FP16 Math Full asinh,math_brute_force/test_bruteforce -f -d -r asinh
+FP16 Math Full asinpi,math_brute_force/test_bruteforce -f -d -r asinpi
+FP16 Math Full assignment,math_brute_force/test_bruteforce -f -d -r assignment
+FP16 Math Full atan,math_brute_force/test_bruteforce -f -d -r atan
+FP16 Math Full atan2,math_brute_force/test_bruteforce -f -d -r atan2
+FP16 Math Full atan2pi,math_brute_force/test_bruteforce -f -d -r atan2pi
+FP16 Math Full atanh,math_brute_force/test_bruteforce -f -d -r atanh
+FP16 Math Full atanpi,math_brute_force/test_bruteforce -f -d -r atanpi
+FP16 Math Full cbrt,math_brute_force/test_bruteforce -f -d -r cbrt
+FP16 Math Full ceil,math_brute_force/test_bruteforce -f -d -r ceil
+FP16 Math Full copysign,math_brute_force/test_bruteforce -f -d -r copysign
+FP16 Math Full cos,math_brute_force/test_bruteforce -f -d -r cos
+FP16 Math Full cosh,math_brute_force/test_bruteforce -f -d -r cosh
+FP16 Math Full cospi,math_brute_force/test_bruteforce -f -d -r cospi
+FP16 Math Full divide,math_brute_force/test_bruteforce -f -d -r divide
+FP16 Math Full erf,math_brute_force/test_bruteforce -f -d -r erf
+FP16 Math Full erfc,math_brute_force/test_bruteforce -f -d -r erfc
+FP16 Math Full exp,math_brute_force/test_bruteforce -f -d -r exp
+FP16 Math Full exp10,math_brute_force/test_bruteforce -f -d -r exp10
+FP16 Math Full exp2,math_brute_force/test_bruteforce -f -d -r exp2
+FP16 Math Full expm1,math_brute_force/test_bruteforce -f -d -r expm1
+FP16 Math Full fabs,math_brute_force/test_bruteforce -f -d -r fabs
+FP16 Math Full fdim,math_brute_force/test_bruteforce -f -d -r fdim
+FP16 Math Full floor,math_brute_force/test_bruteforce -f -d -r floor
+FP16 Math Full fma,math_brute_force/test_bruteforce -f -d -r fma
+FP16 Math Full fmax,math_brute_force/test_bruteforce -f -d -r fmax
+FP16 Math Full fmin,math_brute_force/test_bruteforce -f -d -r fmin
+FP16 Math Full fmod,math_brute_force/test_bruteforce -f -d -r fmod
+FP16 Math Full fract,math_brute_force/test_bruteforce -f -d -r fract
+FP16 Math Full frexp,math_brute_force/test_bruteforce -f -d -r frexp
+FP16 Math Full hypot,math_brute_force/test_bruteforce -f -d -r hypot
+FP16 Math Full ilogb,math_brute_force/test_bruteforce -f -d -r ilogb
+FP16 Math Full isequal,math_brute_force/test_bruteforce -f -d -r isequal
+FP16 Math Full isfinite,math_brute_force/test_bruteforce -f -d -r isfinite
+FP16 Math Full isgreater,math_brute_force/test_bruteforce -f -d -r isgreater
+FP16 Math Full isgreaterequal,math_brute_force/test_bruteforce -f -d -r isgreaterequal
+FP16 Math Full isinf,math_brute_force/test_bruteforce -f -d -r isinf
+FP16 Math Full isless,math_brute_force/test_bruteforce -f -d -r isless
+FP16 Math Full islessequal,math_brute_force/test_bruteforce -f -d -r islessequal
+FP16 Math Full islessgreater,math_brute_force/test_bruteforce -f -d -r islessgreater
+FP16 Math Full isnan,math_brute_force/test_bruteforce -f -d -r isnan
+FP16 Math Full isnormal,math_brute_force/test_bruteforce -f -d -r isnormal
+FP16 Math Full isnotequal,math_brute_force/test_bruteforce -f -d -r isnotequal
+FP16 Math Full isordered,math_brute_force/test_bruteforce -f -d -r isordered
+FP16 Math Full isunordered,math_brute_force/test_bruteforce -f -d -r isunordered
+FP16 Math Full ldexp,math_brute_force/test_bruteforce -f -d -r ldexp
+FP16 Math Full lgamma,math_brute_force/test_bruteforce -f -d -r lgamma
+FP16 Math Full lgamma_r,math_brute_force/test_bruteforce -f -d -r lgamma_r
+FP16 Math Full log,math_brute_force/test_bruteforce -f -d -r log
+FP16 Math Full log10,math_brute_force/test_bruteforce -f -d -r log10
+FP16 Math Full log1p,math_brute_force/test_bruteforce -f -d -r log1p
+FP16 Math Full log2,math_brute_force/test_bruteforce -f -d -r log2
+FP16 Math Full logb,math_brute_force/test_bruteforce -f -d -r logb
+FP16 Math Full mad,math_brute_force/test_bruteforce -f -d -r mad
+FP16 Math Full maxmag,math_brute_force/test_bruteforce -f -d -r maxmag
+FP16 Math Full minmag,math_brute_force/test_bruteforce -f -d -r minmag
+FP16 Math Full modf,math_brute_force/test_bruteforce -f -d -r modf
+FP16 Math Full multiply,math_brute_force/test_bruteforce -f -d -r multiply
+FP16 Math Full nan,math_brute_force/test_bruteforce -f -d -r nan
+FP16 Math Full nextafter,math_brute_force/test_bruteforce -f -d -r nextafter
+FP16 Math Full not,math_brute_force/test_bruteforce -f -d -r not
+FP16 Math Full pow,math_brute_force/test_bruteforce -f -d -r pow
+FP16 Math Full pown,math_brute_force/test_bruteforce -f -d -r pown
+FP16 Math Full powr,math_brute_force/test_bruteforce -f -d -r powr
+FP16 Math Full reciprocal,math_brute_force/test_bruteforce -f -d -r reciprocal
+FP16 Math Full remainder,math_brute_force/test_bruteforce -f -d -r remainder
+FP16 Math Full remquo,math_brute_force/test_bruteforce -f -d -r remquo
+FP16 Math Full rint,math_brute_force/test_bruteforce -f -d -r rint
+FP16 Math Full rootn,math_brute_force/test_bruteforce -f -d -r rootn
+FP16 Math Full round,math_brute_force/test_bruteforce -f -d -r round
+FP16 Math Full rsqrt,math_brute_force/test_bruteforce -f -d -r rsqrt
+FP16 Math Full signbit,math_brute_force/test_bruteforce -f -d -r signbit
+FP16 Math Full sin,math_brute_force/test_bruteforce -f -d -r sin
+FP16 Math Full sincos,math_brute_force/test_bruteforce -f -d -r sincos
+FP16 Math Full sinh,math_brute_force/test_bruteforce -f -d -r sinh
+FP16 Math Full sinpi,math_brute_force/test_bruteforce -f -d -r sinpi
+FP16 Math Full sqrt,math_brute_force/test_bruteforce -f -d -r sqrt
+FP16 Math Full subtract,math_brute_force/test_bruteforce -f -d -r subtract
+FP16 Math Full tan,math_brute_force/test_bruteforce -f -d -r tan
+FP16 Math Full tanh,math_brute_force/test_bruteforce -f -d -r tanh
+FP16 Math Full tanpi,math_brute_force/test_bruteforce -f -d -r tanpi
+FP16 Math Full trunc,math_brute_force/test_bruteforce -f -d -r trunc

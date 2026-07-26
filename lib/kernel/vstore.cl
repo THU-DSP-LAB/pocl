@@ -65,6 +65,9 @@ IMPLEMENT_VSTORE(float , __global)
 #if defined(cl_khr_fp64)
 IMPLEMENT_VSTORE(double, __global)
 #endif
+#if defined(cl_khr_fp16)
+IMPLEMENT_VSTORE(half, __global)
+#endif
 
 IMPLEMENT_VSTORE(char  , __local)
 IMPLEMENT_VSTORE(short , __local)
@@ -79,6 +82,9 @@ IMPLEMENT_VSTORE(uint  , __local)
 IMPLEMENT_VSTORE(float , __local)
 #if defined(cl_khr_fp64)
 IMPLEMENT_VSTORE(double, __local)
+#endif
+#if defined(cl_khr_fp16)
+IMPLEMENT_VSTORE(half, __local)
 #endif
 
 IMPLEMENT_VSTORE(char  , __private)
@@ -96,6 +102,9 @@ IMPLEMENT_VSTORE(ulong , __private)
 IMPLEMENT_VSTORE(float , __private)
 #if defined(cl_khr_fp64)
 IMPLEMENT_VSTORE(double, __private)
+#endif
+#if defined(cl_khr_fp16)
+IMPLEMENT_VSTORE(half, __private)
 #endif
 
 
@@ -118,4 +127,3 @@ IF_GEN_AS(IMPLEMENT_VSTORE(double, __generic))
 #if defined(cl_khr_fp16)
 IF_GEN_AS(IMPLEMENT_VSTORE(half, __generic))
 #endif
-

@@ -53,7 +53,7 @@ _CL_OVERLOADABLE half acospi (half x)
 
   if (au >= 0x3f800000u) { // NaN, Inf, or |x| >= 1
     if (au == 0x3f800000u)
-      return (u == 0x3f800000u) ? 0.0f16 : 1.0f;
+      return (u == 0x3f800000u) ? (half)0.0f : 1.0f;
     if ((au >> 23) == 0x3ff && ((au & 0x7fffff) != 0)) // qNaN or sNaN
       return x;
     return NAN;

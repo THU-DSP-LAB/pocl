@@ -1,0 +1,7 @@
+# Goal 5 CUDA buffer transfer and mapped-host regressions.
+Buffer Copy,buffers/test_buffers buffer_copy buffer_partial_copy
+Buffer Write,buffers/test_buffers buffer_write_int buffer_write_uchar
+Buffer Write Short,buffers/test_buffers buffer_write_short buffer_write_ushort
+Buffer Write ULong,buffers/test_buffers buffer_write_ulong
+Buffer Map Write,buffers/test_buffers buffer_map_write_uchar buffer_map_write_float
+Buffer Async Write,buffers/test_buffers buffer_write_async_int buffer_write_async_uint

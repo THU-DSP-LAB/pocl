@@ -922,6 +922,8 @@ pocl_llvm_run_pocl_passes(llvm::Module *Bitcode,
                        Device->max_work_item_sizes[1]);
   setModuleIntMetadata(Bitcode, "device_max_witem_sizes_2",
                        Device->max_work_item_sizes[2]);
+  setModuleIntMetadata(Bitcode, "device_max_wg_size",
+                       Device->max_work_group_size);
 
   std::string Opts;
   if (Program->compiler_options)

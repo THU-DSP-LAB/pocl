@@ -65,7 +65,7 @@ POname(clEnqueueSVMUnmap) (cl_command_queue command_queue,
   if (svm_ptr_pocl != NULL)
     {
       assert (svm_ptr_pocl->shadow_cl_mem != NULL);
-      POname (clEnqueueUnmapMemObject (
+      errcode = POname (clEnqueueUnmapMemObject (
           command_queue, svm_ptr_pocl->shadow_cl_mem, svm_ptr,
           num_events_in_wait_list, event_wait_list, event));
       if (errcode != CL_SUCCESS)
@@ -76,4 +76,3 @@ POname(clEnqueueSVMUnmap) (cl_command_queue command_queue,
   return CL_SUCCESS;
 }
 POsym(clEnqueueSVMUnmap)
-

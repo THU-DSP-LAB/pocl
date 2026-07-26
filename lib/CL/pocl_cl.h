@@ -588,6 +588,9 @@ struct pocl_device_ops {
   /** Allocate a buffer in the device's global memory. */
   cl_int (*alloc_mem_obj) (cl_device_id device, cl_mem mem_obj, void* host_ptr);
 
+  /** Allocate memory objects before their create API returns success. */
+  unsigned alloc_mem_obj_at_create;
+
   /** Free a device buffer. */
   void (*free) (cl_device_id device, cl_mem mem_obj);
 

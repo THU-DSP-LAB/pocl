@@ -5,7 +5,8 @@ target triple = "nvptx64-nvidia-cuda"
 
 ; Function Attrs: convergent mustprogress nounwind
 define void @_Z21_cl_sub_group_barrierj(i32 noundef %0) local_unnamed_addr #0 {
-  tail call void @llvm.nvvm.bar.warp.sync(i32 -1)
+  %mask = tail call i32 asm sideeffect "activemask.b32 $0;", "=r"()
+  tail call void @llvm.nvvm.bar.warp.sync(i32 %mask)
   %2 = and i32 %0, 1
   %3 = icmp eq i32 %2, 0
   br i1 %3, label %5, label %4

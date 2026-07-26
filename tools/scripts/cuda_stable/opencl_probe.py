@@ -12,6 +12,8 @@ CL_NAME_VERSION_MAX_NAME_SIZE = 64
 
 CL_DEVICE_IMAGE_SUPPORT = 0x1016
 CL_DEVICE_MAX_PARAMETER_SIZE = 0x1017
+CL_DEVICE_PREFERRED_VECTOR_WIDTH_HALF = 0x1034
+CL_DEVICE_NATIVE_VECTOR_WIDTH_HALF = 0x103C
 CL_DEVICE_SINGLE_FP_CONFIG = 0x101B
 CL_DEVICE_QUEUE_ON_HOST_PROPERTIES = 0x102A
 CL_DEVICE_NAME = 0x102B
@@ -26,9 +28,11 @@ CL_DEVICE_IL_VERSION = 0x105B
 CL_DEVICE_MAX_NUM_SUB_GROUPS = 0x105C
 CL_DEVICE_SUB_GROUP_INDEPENDENT_FORWARD_PROGRESS = 0x105D
 CL_DEVICE_EXTENSIONS_WITH_VERSION = 0x1060
+CL_DEVICE_ILS_WITH_VERSION = 0x1061
 CL_DEVICE_ATOMIC_MEMORY_CAPABILITIES = 0x1063
 CL_DEVICE_ATOMIC_FENCE_CAPABILITIES = 0x1064
 CL_DEVICE_NON_UNIFORM_WORK_GROUP_SUPPORT = 0x1065
+CL_DEVICE_WORK_GROUP_COLLECTIVE_FUNCTIONS_SUPPORT = 0x1068
 CL_DEVICE_GENERIC_ADDRESS_SPACE_SUPPORT = 0x1069
 CL_DEVICE_OPENCL_C_FEATURES = 0x106F
 CL_DEVICE_PIPE_SUPPORT = 0x1071
@@ -77,12 +81,15 @@ class DeviceSnapshot:
     features: tuple[str, ...]
     feature_versions: tuple[str, ...]
     il_version: str
+    il_versions: tuple[str, ...]
     latest_conformance: str
     image_support: int
     single_fp_config: int
     double_fp_config: int
     half_fp_config: int | None
     half_fp_query_error: int
+    preferred_vector_width_half: int
+    native_vector_width_half: int
     svm_capabilities: int
     queue_properties: int
     max_parameter_size: int
@@ -91,6 +98,7 @@ class DeviceSnapshot:
     atomic_memory_capabilities: int
     atomic_fence_capabilities: int
     non_uniform_support: int
+    work_group_collective_support: int
     generic_address_support: int
     pipe_support: int
     integer_dot_product_capabilities: int
@@ -269,12 +277,17 @@ def snapshot(library: Path) -> DeviceSnapshot:
         features=probe.names(CL_DEVICE_OPENCL_C_FEATURES),
         feature_versions=probe.named_versions(CL_DEVICE_OPENCL_C_FEATURES),
         il_version=probe.string(CL_DEVICE_IL_VERSION),
+        il_versions=probe.named_versions(CL_DEVICE_ILS_WITH_VERSION),
         latest_conformance=probe.string(CL_DEVICE_LATEST_CONFORMANCE_VERSION_PASSED),
         image_support=probe.scalar(CL_DEVICE_IMAGE_SUPPORT, uint),
         single_fp_config=probe.scalar(CL_DEVICE_SINGLE_FP_CONFIG, ulong),
         double_fp_config=probe.scalar(CL_DEVICE_DOUBLE_FP_CONFIG, ulong),
         half_fp_config=half_fp_config,
         half_fp_query_error=half_fp_error,
+        preferred_vector_width_half=probe.scalar(
+            CL_DEVICE_PREFERRED_VECTOR_WIDTH_HALF, uint
+        ),
+        native_vector_width_half=probe.scalar(CL_DEVICE_NATIVE_VECTOR_WIDTH_HALF, uint),
         svm_capabilities=probe.scalar(CL_DEVICE_SVM_CAPABILITIES, ulong),
         queue_properties=probe.scalar(CL_DEVICE_QUEUE_ON_HOST_PROPERTIES, ulong),
         max_parameter_size=probe.scalar(CL_DEVICE_MAX_PARAMETER_SIZE, size_t),
@@ -289,6 +302,9 @@ def snapshot(library: Path) -> DeviceSnapshot:
             CL_DEVICE_ATOMIC_FENCE_CAPABILITIES, ulong
         ),
         non_uniform_support=probe.scalar(CL_DEVICE_NON_UNIFORM_WORK_GROUP_SUPPORT, uint),
+        work_group_collective_support=probe.scalar(
+            CL_DEVICE_WORK_GROUP_COLLECTIVE_FUNCTIONS_SUPPORT, uint
+        ),
         generic_address_support=probe.scalar(
             CL_DEVICE_GENERIC_ADDRESS_SPACE_SUPPORT, uint
         ),

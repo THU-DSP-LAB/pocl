@@ -300,16 +300,6 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
                     cl_mem mem = *(void **)arguments[i].value;
                     params[i]
                       = &mem->device_ptrs[device->global_mem_id].mem_ptr;
-
-                    /* On ARM with USE_HOST_PTR, perform explicit copy to
-                     * device */
-                    if ((mem->flags & CL_MEM_USE_HOST_PTR) &&
-                        !((pocl_cuda_device_data_t *)device->data)->supports_cu_mem_host_register)
-                      {
-                        cuMemcpyHtoD (*(CUdeviceptr *)(params[i]),
-                                      mem->mem_host_ptr, mem->size);
-                        cuStreamSynchronize (0);
-                      }
                   }
                 else
                   {

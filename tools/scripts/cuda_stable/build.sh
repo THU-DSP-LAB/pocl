@@ -11,6 +11,7 @@ readonly OPENCL_CTS_SOURCE_DIR="$REPOSITORY_DIR/third_party/OpenCL-CTS"
 readonly LOG_DIR="$BUILD_DIR/validation-logs/build"
 readonly JOBS="${POCL_BUILD_JOBS:-$(nproc)}"
 readonly LLVM_CONFIG="${LLVM_CONFIG:-/usr/bin/llvm-config-18}"
+readonly LLVM_SPIRV="${LLVM_SPIRV:-/usr/bin/llvm-spirv-18}"
 
 require_command() {
   local command_name=$1
@@ -26,6 +27,10 @@ verify_toolchain() {
   require_command nvidia-smi
   if [[ ! -x "$LLVM_CONFIG" ]]; then
     echo "Missing LLVM config executable: $LLVM_CONFIG" >&2
+    return 1
+  fi
+  if [[ ! -x "$LLVM_SPIRV" ]]; then
+    echo "Missing LLVM SPIR-V translator: $LLVM_SPIRV" >&2
     return 1
   fi
 
@@ -54,13 +59,14 @@ configure() {
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
     -DWITH_LLVM_CONFIG="$LLVM_CONFIG" \
+    -DHOST_LLVM_SPIRV="$LLVM_SPIRV" \
     -DENABLE_CONFORMANCE=ON \
     -DENABLE_CUDA=ON \
     -DENABLE_EXAMPLES=ON \
     -DENABLE_HOST_CPU_DEVICES=OFF \
     -DENABLE_HWLOC=OFF \
     -DENABLE_ICD=OFF \
-    -DENABLE_SPIRV=OFF \
+    -DENABLE_SPIRV=ON \
     -DENABLE_TESTS=ON \
     -DENABLE_TESTSUITES=conformance \
     -DCTS_SPIRV_INCLUDE_DIR=/usr \

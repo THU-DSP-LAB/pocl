@@ -59,9 +59,63 @@ IMPLEMENT_FP16_FDIM (half4)
 IMPLEMENT_FP16_FDIM (half8)
 IMPLEMENT_FP16_FDIM (half16)
 
-/* fmod -> @llvm.frem and frexp -> @llvm.frexp are single LLVM intrinsics (no
-   libm libcall), so they belong with the Clang-builtin-backed overloads. */
-half _CL_OVERLOADABLE fmod (half a, half b) { return (half)__builtin_fmodf ((float)a, (float)b); }
+#define POCL_HALF_SIGN_MASK ((ushort)0x8000)
+#define POCL_HALF_EXPONENT_MASK ((ushort)0x7c00)
+#define POCL_HALF_FRACTION_MASK ((ushort)0x03ff)
+#define POCL_HALF_IMPLICIT_BIT ((ushort)0x0400)
+#define POCL_HALF_EXPONENT_SHIFT 10
+#define POCL_HALF_UNIT_EXPONENT_OFFSET 1
+#define POCL_HALF_UNIT_MSB_OFFSET 9
+#define POCL_ULONG_MSB 63
+
+static _CL_ALWAYSINLINE _CL_READNONE ulong
+pocl_half_units (ushort magnitude)
+{
+  uint exponent = magnitude >> POCL_HALF_EXPONENT_SHIFT;
+  ulong significand = magnitude & POCL_HALF_FRACTION_MASK;
+  if (exponent == 0)
+    return significand;
+  return (significand | POCL_HALF_IMPLICIT_BIT)
+         << (exponent - POCL_HALF_UNIT_EXPONENT_OFFSET);
+}
+
+static _CL_ALWAYSINLINE _CL_READNONE ushort
+pocl_half_from_units (ulong units)
+{
+  if (units < POCL_HALF_IMPLICIT_BIT)
+    return (ushort)units;
+
+  uint most_significant_bit = POCL_ULONG_MSB - (uint)clz (units);
+  uint exponent = most_significant_bit - POCL_HALF_UNIT_MSB_OFFSET;
+  uint shift = exponent - POCL_HALF_UNIT_EXPONENT_OFFSET;
+  ulong significand = units >> shift;
+  return (ushort)((exponent << POCL_HALF_EXPONENT_SHIFT)
+                  | (significand - POCL_HALF_IMPLICIT_BIT));
+}
+
+/* Every finite half is an integer multiple of 2^-24. Integer remainder avoids
+   the quotient precision loss in NVPTX frem and remains exactly representable
+   as half because both operands share the divisor's binary unit. */
+half _CL_OVERLOADABLE fmod (half a, half b)
+{
+  ushort a_bits = as_ushort (a);
+  ushort b_bits = as_ushort (b);
+  ushort a_magnitude = a_bits & ~POCL_HALF_SIGN_MASK;
+  ushort b_magnitude = b_bits & ~POCL_HALF_SIGN_MASK;
+
+  if (a_magnitude > POCL_HALF_EXPONENT_MASK
+      || b_magnitude > POCL_HALF_EXPONENT_MASK
+      || a_magnitude == POCL_HALF_EXPONENT_MASK || b_magnitude == 0)
+    return as_half ((ushort)(POCL_HALF_EXPONENT_MASK
+                             | POCL_HALF_FRACTION_MASK));
+  if (b_magnitude == POCL_HALF_EXPONENT_MASK || a_magnitude < b_magnitude)
+    return a;
+
+  ulong remainder = pocl_half_units (a_magnitude)
+                    % pocl_half_units (b_magnitude);
+  ushort result = pocl_half_from_units (remainder);
+  return as_half ((ushort)(result | (a_bits & POCL_HALF_SIGN_MASK)));
+}
 DEFINE_FP16_EXPR_V_VV (fmod)
 
 half _CL_OVERLOADABLE
@@ -71,7 +125,7 @@ frexp (half x, private int *e) { return (half)__builtin_frexpf ((float)x, e); }
   { int t; half r = frexp (x, &t); *e = t; return r; }
 IMPLEMENT_FP16_FREXP_AS (local)
 IMPLEMENT_FP16_FREXP_AS (global)
-#ifdef __opencl_c_generic_address_space
+#if defined(__opencl_c_generic_address_space) && !defined(__NVPTX__)
 IMPLEMENT_FP16_FREXP_AS (generic)
 #endif
 

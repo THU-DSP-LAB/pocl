@@ -125,8 +125,8 @@ _CL_OVERLOADABLE half lgamma_r (half xf16, private int *signp) {
         /* for x=0x1.ff4p+12, lgamma(x) ~ 0x1.ffd3p+15, thus there is no
            overflow for rounding towards zero, downwards or to nearest */
 #ifndef __clang__
-	half r = (x > 0x1.ff4p+12f) ? 0x1p15f16 * 0x1p15f16
-          : 0x1.ffcp+15f16 + 1.0f16;
+	half r = (x > 0x1.ff4p+12f) ? (half)0x1p15f * (half)0x1p15f
+          : (half)0x1.ffcp+15f + (half)1.0f;
 #else
         /* clang 19 raises a spurious overflow with the above code
            for x=0x1.ff4p+12 and RNDN with -frounding-math: apparently it
@@ -135,9 +135,9 @@ _CL_OVERLOADABLE half lgamma_r (half xf16, private int *signp) {
            We thus use a workaround. */
         half r;
         if (x > 0x1.ff4p+12f)
-          r = 0x1p15f16 * 0x1p15f16;
+          r = (half)0x1p15f * (half)0x1p15f;
         else
-          r = 0x1.ffcp+15f16 + 1.0f16;
+          r = (half)0x1.ffcp+15f + (half)1.0f;
 #endif
 #ifdef CORE_MATH_SUPPORT_ERRNO
 	if (x > 0x1.ff4p+12f || (x == 0x1.ff4p+12f && x + 0x1p-12f > x))
@@ -233,7 +233,7 @@ _CL_OVERLOADABLE half lgamma_r (half xf16, global int *signp) {
     return retval;
 }
 
-#ifdef __opencl_c_generic_address_space
+#if defined(__opencl_c_generic_address_space) && !defined(__NVPTX__)
 _CL_OVERLOADABLE half lgamma_r (half xf16, generic int *signp) {
     int sign = 0;
     half retval = lgamma_r(xf16, &sign);

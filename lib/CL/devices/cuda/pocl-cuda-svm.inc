@@ -70,8 +70,14 @@ pocl_cuda_set_kernel_exec_info_ext (cl_device_id dev,
   pocl_cuda_device_data_t *data = (pocl_cuda_device_data_t *)dev->data;
   switch (param_name)
     {
-    case CL_KERNEL_EXEC_INFO_SVM_FINE_GRAIN_SYSTEM:
     case CL_KERNEL_EXEC_INFO_SVM_PTRS:
+      return (dev->svm_caps & CL_DEVICE_SVM_COARSE_GRAIN_BUFFER)
+                 ? CL_SUCCESS
+                 : CL_INVALID_OPERATION;
+    case CL_KERNEL_EXEC_INFO_SVM_FINE_GRAIN_SYSTEM:
+      return (dev->svm_caps & CL_DEVICE_SVM_FINE_GRAIN_SYSTEM)
+                 ? CL_SUCCESS
+                 : CL_INVALID_OPERATION;
     case CL_KERNEL_EXEC_INFO_USM_PTRS_INTEL:
       return data->supports_managed_memory ? CL_SUCCESS : CL_INVALID_OPERATION;
     default:

@@ -281,7 +281,9 @@ if (ENABLE_LLVM)
   if(ENABLE_SPIRV)
     list(APPEND EXTRA_LLVM_SOURCES "pocl_llvm_spirv.cc")
   endif()
-  set(LLVM_API_SOURCES "pocl_llvm_build.cc" "pocl_llvm_metadata.cc" "pocl_llvm_utils.cc" "pocl_llvm_wg.cc" ${EXTRA_LLVM_SOURCES})
+  set(LLVM_API_SOURCES "pocl_llvm_address_spaces.cc" "pocl_llvm_build.cc"
+      "pocl_llvm_metadata.cc" "pocl_llvm_utils.cc" "pocl_llvm_wg.cc"
+      ${EXTRA_LLVM_SOURCES})
 
   pocl_build_clang_llvm_object(lib_cl_llvm ${LLVM_API_SOURCES})
   if(LLVM_PACKAGE_VERSION)

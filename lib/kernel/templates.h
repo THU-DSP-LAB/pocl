@@ -2205,21 +2205,27 @@
   IMPLEMENT_FP16_EXPR_V_VI (NAME, half8, int8, NAME2_8 (NAME))                \
   IMPLEMENT_FP16_EXPR_V_VI (NAME, half16, int16, NAME2_16 (NAME))
 
-/* __builtin_isfpclass() returns 1 / 0, not -1 that we need */
-#define IMPLEMENT_FP16_BUILTIN_FPCLASS(NAME, CLASSNUM, FLTTYPE, INTTYPE)          \
+/* Scalar relational builtins return 1/0; vector forms use all-bits-set/0. */
+#define IMPLEMENT_FP16_BUILTIN_FPCLASS_SCALAR(NAME, CLASSNUM)                  \
+  int _CL_OVERLOADABLE _CL_READNONE _cl_##NAME (half a)                       \
+  {                                                                           \
+    return __builtin_isfpclass (a, CLASSNUM) ? 1 : 0;                         \
+  }
+
+#define IMPLEMENT_FP16_BUILTIN_FPCLASS_VECTOR(NAME, CLASSNUM, FLTTYPE, INTTYPE) \
   INTTYPE _CL_OVERLOADABLE _CL_READNONE _cl_##NAME (FLTTYPE a)                \
   {                                                                           \
     return (__builtin_isfpclass (a, CLASSNUM) > (INTTYPE)0) ? (INTTYPE)(-1)   \
                                                             : (INTTYPE)(0);   \
   }
 
-#define DEFINE_FP16_BUILTIN_FPCLASS(NAME, CLASSNUM)                               \
-  IMPLEMENT_FP16_BUILTIN_FPCLASS (NAME, CLASSNUM, half, int)                      \
-  IMPLEMENT_FP16_BUILTIN_FPCLASS (NAME, CLASSNUM, half2, short2)                  \
-  IMPLEMENT_FP16_BUILTIN_FPCLASS (NAME, CLASSNUM, half3, short3)                  \
-  IMPLEMENT_FP16_BUILTIN_FPCLASS (NAME, CLASSNUM, half4, short4)                  \
-  IMPLEMENT_FP16_BUILTIN_FPCLASS (NAME, CLASSNUM, half8, short8)                  \
-  IMPLEMENT_FP16_BUILTIN_FPCLASS (NAME, CLASSNUM, half16, short16)
+#define DEFINE_FP16_BUILTIN_FPCLASS(NAME, CLASSNUM)                            \
+  IMPLEMENT_FP16_BUILTIN_FPCLASS_SCALAR (NAME, CLASSNUM)                      \
+  IMPLEMENT_FP16_BUILTIN_FPCLASS_VECTOR (NAME, CLASSNUM, half2, short2)       \
+  IMPLEMENT_FP16_BUILTIN_FPCLASS_VECTOR (NAME, CLASSNUM, half3, short3)       \
+  IMPLEMENT_FP16_BUILTIN_FPCLASS_VECTOR (NAME, CLASSNUM, half4, short4)       \
+  IMPLEMENT_FP16_BUILTIN_FPCLASS_VECTOR (NAME, CLASSNUM, half8, short8)       \
+  IMPLEMENT_FP16_BUILTIN_FPCLASS_VECTOR (NAME, CLASSNUM, half16, short16)
 
 #define DEFINE_FP16_BUILTIN_V_V(NAME, BUILTIN)                                \
   IMPLEMENT_FP16_EXPR_V_V (NAME, half, BUILTIN (a))                           \

@@ -1,0 +1,10 @@
+# Goal 5 FP16 regressions found by the first complete cold run.
+# These rows must remain exact subsets of the non-wimpy full manifest.
+FP16 Conversions Full 0681-0690,conversions/test_conversions 681 10
+FP16 Conversions Full 0711-0715,conversions/test_conversions 711 5
+FP16 Math Full fmod,math_brute_force/test_bruteforce -f -d -r fmod
+FP16 Math Full isfinite,math_brute_force/test_bruteforce -f -d -r isfinite
+FP16 Math Full isinf,math_brute_force/test_bruteforce -f -d -r isinf
+FP16 Math Full isnan,math_brute_force/test_bruteforce -f -d -r isnan
+FP16 Math Full isnormal,math_brute_force/test_bruteforce -f -d -r isnormal
+FP16 Math Full modf,math_brute_force/test_bruteforce -f -d -r modf
