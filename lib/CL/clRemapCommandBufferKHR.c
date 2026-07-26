@@ -153,18 +153,14 @@ POname (clRemapCommandBufferKHR) (cl_command_buffer_khr command_buffer,
         {
           cl_uint work_dim = cmd->command.run.pc.work_dim;
           size_t *local_size = cmd->command.run.pc.local_size;
-          size_t *groups = cmd->command.run.pc.num_groups;
-          size_t global_size[3]
-            = { local_size[0] * groups[0],
-                work_dim > 1 ? (local_size[1] * groups[1]) : 0,
-                work_dim > 2 ? (local_size[2] * groups[2]) : 0 };
 
           /* Re-record cmd using the original command's kernel arguments. */
           _cl_command_node *mutable_h = NULL;
           errcode = pocl_record_ndrange_kernel (
             new_cmdbuf, new_queue, props, cmd->command.run.kernel,
             cmd->command.run.arguments, work_dim,
-            cmd->command.run.pc.global_offset, global_size, local_size,
+            cmd->command.run.pc.global_offset, cmd->command.run.global_size,
+            local_size,
             cmd->sync.syncpoint.num_sync_points_in_wait_list,
             cmd->sync.syncpoint.sync_point_wait_list, NULL, &mutable_h);
         }

@@ -266,6 +266,8 @@ process_options (const char *options, char *modded_options, char *link_options,
             }
           else if (strstr (cl_parameters_not_yet_supported_by_clang, token))
             {
+              if (strcmp (token, "-cl-uniform-work-group-size") == 0)
+                program->requires_uniform_work_group_size = CL_TRUE;
               APPEND_TO_OPTION_BUILD_LOG (
                   "This build option is not yet supported by clang: %s\n",
                   token);
@@ -692,6 +694,11 @@ compile_and_link_program(int compile_program,
 
   /* TODO this should be somehow utilized at linking */
   POCL_MEM_FREE (program->compiler_options);
+  program->requires_uniform_work_group_size = CL_FALSE;
+  for (cl_uint input_index = 0; input_index < num_input_programs;
+       ++input_index)
+    if (input_programs[input_index]->requires_uniform_work_group_size)
+      program->requires_uniform_work_group_size = CL_TRUE;
 
   if (extra_build_options)
     {

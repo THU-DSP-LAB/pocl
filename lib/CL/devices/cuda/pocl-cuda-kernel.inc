@@ -125,6 +125,65 @@ submit_cudnn_kernel(CUstream stream, _cl_command_node *cmd,
 
 #endif //ENABLE_CUDNN
 
+enum { POCL_CUDA_MAX_PARTITIONED_LAUNCHES = 8 };
+
+typedef struct pocl_cuda_launch_region_s
+{
+  unsigned grid[3];
+  unsigned block[3];
+  unsigned group_offset[3];
+} pocl_cuda_launch_region_t;
+
+static unsigned
+pocl_cuda_partition_launch (
+    const _cl_command_run *run,
+    pocl_cuda_launch_region_t regions[POCL_CUDA_MAX_PARTITIONED_LAUNCHES])
+{
+  memset (regions, 0,
+          sizeof (pocl_cuda_launch_region_t)
+              * POCL_CUDA_MAX_PARTITIONED_LAUNCHES);
+  for (unsigned dimension = 0; dimension < 3; ++dimension)
+    {
+      regions[0].grid[dimension] = 1;
+      regions[0].block[dimension] = 1;
+    }
+
+  unsigned region_count = 1;
+  for (unsigned dimension = 0; dimension < 3; ++dimension)
+    {
+      const size_t enqueued = run->pc.local_size[dimension];
+      const size_t global = run->global_size[dimension];
+      const size_t full_groups = global / enqueued;
+      const size_t tail_size = global % enqueued;
+      assert (full_groups <= UINT_MAX && tail_size <= UINT_MAX);
+
+      if (full_groups == 0)
+        {
+          for (unsigned region = 0; region < region_count; ++region)
+            regions[region].block[dimension] = tail_size;
+          continue;
+        }
+      for (unsigned region = 0; region < region_count; ++region)
+        {
+          regions[region].grid[dimension] = full_groups;
+          regions[region].block[dimension] = enqueued;
+        }
+      if (tail_size == 0)
+        continue;
+
+      const unsigned old_count = region_count;
+      assert (old_count * 2 <= POCL_CUDA_MAX_PARTITIONED_LAUNCHES);
+      for (unsigned region = 0; region < old_count; ++region)
+        {
+          regions[old_count + region] = regions[region];
+          regions[old_count + region].grid[dimension] = 1;
+          regions[old_count + region].block[dimension] = tail_size;
+          regions[old_count + region].group_offset[dimension] = full_groups;
+        }
+      region_count *= 2;
+    }
+  return region_count;
+}
 void
 pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
                          cl_device_id device, cl_event event)
@@ -210,12 +269,16 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
   void *null = NULL;
   unsigned sharedMemBytes = 0;
   void **params
-      = alloca (sizeof (void *) * (meta->num_args + meta->num_locals + 4));
+      = alloca (sizeof (void *) * (meta->num_args + meta->num_locals + 16));
   unsigned *sharedMemOffsets
       = alloca (sizeof (unsigned) * (meta->num_args + meta->num_locals));
   unsigned constantMemBytes = 0;
   unsigned *constantMemOffsets = alloca (sizeof (unsigned) * meta->num_args);
   unsigned globalOffsets[3];
+  unsigned globalSizes[3];
+  unsigned totalGroups[3];
+  unsigned enqueuedLocalSizes[3];
+  unsigned groupOffsets[3];
 
   CUresult result;
   unsigned i;
@@ -358,10 +421,32 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
   params[arg_index++] = globalOffsets + 1;
   params[arg_index++] = globalOffsets + 2;
 
-  /* Launch kernel */
-  result = cuLaunchKernel (function, pc.num_groups[0], pc.num_groups[1],
-                           pc.num_groups[2], pc.local_size[0],
-                           pc.local_size[1], pc.local_size[2], sharedMemBytes,
-                           stream, params, NULL);
-  CUDA_CHECK_ABORT (result, "cuLaunchKernel");
+  for (i = 0; i < 3; ++i)
+    {
+      assert (run.global_size[i] <= UINT_MAX);
+      assert (pc.num_groups[i] <= UINT_MAX);
+      assert (pc.local_size[i] <= UINT_MAX);
+      globalSizes[i] = run.global_size[i];
+      totalGroups[i] = pc.num_groups[i];
+      enqueuedLocalSizes[i] = pc.local_size[i];
+      params[arg_index++] = globalSizes + i;
+    }
+  for (i = 0; i < 3; ++i)
+    params[arg_index++] = totalGroups + i;
+  for (i = 0; i < 3; ++i)
+    params[arg_index++] = enqueuedLocalSizes + i;
+  for (i = 0; i < 3; ++i)
+    params[arg_index++] = groupOffsets + i;
+
+  pocl_cuda_launch_region_t regions[POCL_CUDA_MAX_PARTITIONED_LAUNCHES];
+  const unsigned region_count = pocl_cuda_partition_launch (&run, regions);
+  for (i = 0; i < region_count; ++i)
+    {
+      memcpy (groupOffsets, regions[i].group_offset, sizeof (groupOffsets));
+      result = cuLaunchKernel (
+          function, regions[i].grid[0], regions[i].grid[1], regions[i].grid[2],
+          regions[i].block[0], regions[i].block[1], regions[i].block[2],
+          sharedMemBytes, stream, params, NULL);
+      CUDA_CHECK_ABORT (result, "cuLaunchKernel");
+    }
 }

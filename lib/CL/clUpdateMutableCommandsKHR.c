@@ -98,19 +98,12 @@ POname (clUpdateMutableCommandsKHR) (
           : cfg->command->command.run.pc.work_dim;
       unsigned copy_size = sizeof (size_t) * work_dim;
 
-      /* PoCL does not store Global worksize, only the number of WGs.
-       * recalculate Global worksize */
-      size_t *LS = cfg->command->command.run.pc.local_size;
-      size_t *NG = cfg->command->command.run.pc.num_groups;
-      size_t orig_global_work_size[] = { LS[0] * NG[0],
-                                       LS[1] * NG[1],
-                                       LS[2] * NG[2]};
       const size_t *global_work_offset = cfg->global_work_offset
           ? cfg->global_work_offset
           : cfg->command->command.run.pc.global_offset;
       const size_t *global_work_size = cfg->global_work_size
           ? cfg->global_work_size
-          : orig_global_work_size;
+          : cfg->command->command.run.global_size;
       const size_t *local_work_size = cfg->local_work_size
           ? cfg->local_work_size
           : cfg->command->command.run.pc.local_size;
@@ -144,6 +137,8 @@ POname (clUpdateMutableCommandsKHR) (
                      local_work_size[2]);
       memcpy (cfg->command->command.run.pc.global_offset,
               global_work_offset, copy_size);
+      memcpy (cfg->command->command.run.global_size,
+              global_work_size, copy_size);
       POCL_MSG_PRINT_INFO ("UPDATE MUTABLE CMD: NEW GLOBAL_OFFSET %zu %zu %zu\n",
                      global_work_offset[0],
                      global_work_offset[1],

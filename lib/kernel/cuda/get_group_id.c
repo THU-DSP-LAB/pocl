@@ -25,14 +25,18 @@ uint get_nvvm_ctaid_x();
 uint get_nvvm_ctaid_y();
 uint get_nvvm_ctaid_z();
 
+extern uint _group_offset_x;
+extern uint _group_offset_y;
+extern uint _group_offset_z;
+
 size_t _CL_OVERLOADABLE
 get_group_id(unsigned int dimindx)
 {
   switch(dimindx)
     {
-    case 0: return get_nvvm_ctaid_x();
-    case 1: return get_nvvm_ctaid_y();
-    case 2: return get_nvvm_ctaid_z();
+    case 0: return get_nvvm_ctaid_x() + _group_offset_x;
+    case 1: return get_nvvm_ctaid_y() + _group_offset_y;
+    case 2: return get_nvvm_ctaid_z() + _group_offset_z;
     default: return 0;
     }
  }

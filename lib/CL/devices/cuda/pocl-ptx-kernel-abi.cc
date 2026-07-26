@@ -118,6 +118,18 @@ void handleGetGlobalOffset(llvm::Module *Module) {
       std::vector<llvm::Type *>(3, Type));
 }
 
+void handleNonUniformWorkGroup(llvm::Module *Module) {
+  llvm::Type *Type = llvm::Type::getInt32Ty(Module->getContext());
+  replaceGlobalsWithArguments(
+      Module,
+      {"_global_size_x", "_global_size_y", "_global_size_z",
+       "_num_groups_x", "_num_groups_y", "_num_groups_z",
+       "_enqueued_local_size_x", "_enqueued_local_size_y",
+       "_enqueued_local_size_z", "_group_offset_x", "_group_offset_y",
+       "_group_offset_z"},
+      std::vector<llvm::Type *>(12, Type));
+}
+
 struct OffsetArgumentRewrite {
   std::vector<llvm::Argument *> Arguments;
   std::vector<llvm::Type *> Types;

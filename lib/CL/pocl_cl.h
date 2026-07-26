@@ -1939,6 +1939,8 @@ struct _cl_program {
   cl_context context;
   /* -cl-denorms-are-zero build option */
   unsigned flush_denorms;
+  /* Enqueue must reject any non-uniform NDRange for this program. */
+  cl_bool requires_uniform_work_group_size;
 
   /* list of devices "associated with the program" (quote from Specs)
    * ... IOW for which we *can* build the program.

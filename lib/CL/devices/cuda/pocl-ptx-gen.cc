@@ -67,7 +67,11 @@ int applyCoreTransforms(llvm::Module *Module, bool VerifyModule) {
     return CL_BUILD_PROGRAM_FAILURE;
 
   pocl::cuda::handleGetGlobalOffset(Module);
-  return verifyAtStep(Module, "handleGetGlobalOffset", VerifyModule)
+  if (!verifyAtStep(Module, "handleGetGlobalOffset", VerifyModule))
+    return CL_BUILD_PROGRAM_FAILURE;
+
+  pocl::cuda::handleNonUniformWorkGroup(Module);
+  return verifyAtStep(Module, "handleNonUniformWorkGroup", VerifyModule)
              ? CL_SUCCESS
              : CL_BUILD_PROGRAM_FAILURE;
 }

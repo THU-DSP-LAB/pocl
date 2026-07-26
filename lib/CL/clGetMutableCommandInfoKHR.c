@@ -93,13 +93,8 @@ POname (clGetMutableCommandInfoKHR) (cl_mutable_command_khr command,
       break;
     case CL_MUTABLE_DISPATCH_GLOBAL_WORK_SIZE_KHR:
       PARAM_SIZE (sizeof (size_t) * node->command.run.pc.work_dim);
-      size_t *NG = node->command.run.pc.num_groups;
-      size_t *LS = node->command.run.pc.local_size;
-      assert (LS[0]);
-      size_t Res[] = { (NG[0] * LS[0]), (NG[1] * LS[1]), (NG[2] * LS[2]) };
-      POCL_MSG_WARN ("GET MUTABLE INFO : GLOBAL SIZE: %zu %zu %zu \n", Res[0],
-                     Res[1], Res[2]);
-      PARAM_VALUE (&Res, sizeof (size_t) * node->command.run.pc.work_dim);
+      PARAM_VALUE (&node->command.run.global_size,
+                   sizeof (size_t) * node->command.run.pc.work_dim);
       break;
     case CL_MUTABLE_DISPATCH_LOCAL_WORK_SIZE_KHR:
       PARAM_SIZE (sizeof (size_t) * node->command.run.pc.work_dim);

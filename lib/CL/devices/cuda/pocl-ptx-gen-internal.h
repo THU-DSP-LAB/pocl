@@ -23,6 +23,7 @@ void fixConstantMemArgs(llvm::Module *Module);
 void fixLocalMemArgs(llvm::Module *Module);
 void handleGetWorkDim(llvm::Module *Module);
 void handleGetGlobalOffset(llvm::Module *Module);
+void handleNonUniformWorkGroup(llvm::Module *Module);
 
 int linkLibDevice(llvm::Module *Module, const char *LibDevicePath,
                   bool FlushDenorms);

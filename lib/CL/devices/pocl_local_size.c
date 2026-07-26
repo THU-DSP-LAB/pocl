@@ -63,6 +63,27 @@ divide_chain (size_t a, size_t b, size_t c)
   return (b % a == 0 && c % b == 0);
 }
 
+typedef struct pocl_non_uniform_size_config_s
+{
+  size_t max_group_size;
+  size_t global[3];
+  size_t max_item[3];
+} pocl_non_uniform_size_config_t;
+
+static void
+pocl_choose_non_uniform_local_size (
+    const pocl_non_uniform_size_config_t *config, size_t local[3])
+{
+  size_t remaining = config->max_group_size;
+  for (unsigned dimension = 0; dimension < 3; ++dimension)
+    {
+      const size_t dimension_limit
+          = min (config->global[dimension], config->max_item[dimension]);
+      local[dimension] = min (dimension_limit, remaining);
+      remaining /= local[dimension];
+    }
+}
+
 void
 pocl_default_local_size_optimizer (cl_device_id dev,
                                    cl_kernel kernel,
@@ -75,6 +96,22 @@ pocl_default_local_size_optimizer (cl_device_id dev,
                                    size_t *local_y,
                                    size_t *local_z)
 {
+  if (dev->non_uniform_work_group_support
+      && !kernel->program->requires_uniform_work_group_size)
+    {
+      const pocl_non_uniform_size_config_t config
+          = { max_group_size,
+              { global_x, global_y, global_z },
+              { dev->max_work_item_sizes[0], dev->max_work_item_sizes[1],
+                dev->max_work_item_sizes[2] } };
+      size_t local[3];
+      pocl_choose_non_uniform_local_size (&config, local);
+      *local_x = local[0];
+      *local_y = local[1];
+      *local_z = local[2];
+      return;
+    }
+
   /* Tries figure out a local size which utilizes all the device's resources
    * efficiently. Assume work-groups are scheduled to compute units, so
    * try to split it to a number of work groups at the equal to the number

@@ -1,3 +1,9 @@
+enum
+{
+  POCL_CUDA_KERNEL_PARAMETER_BYTES = 4352,
+  POCL_CUDA_IMPLICIT_PARAMETER_COUNT = 16,
+};
+
 void
 pocl_cuda_init_device_ops (struct pocl_device_ops *ops)
 {
@@ -385,14 +391,17 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
   dev->wg_collective_func_support = CL_TRUE;
 
   // CUDA kernels have a 4352-byte parameter area on CC >= 2.0 devices, but
-  // PoCL appends four implicit uint32 launch parameters: work_dim and the
-  // three global offsets.
-  dev->max_parameter_size = 4352 - 4 * sizeof (cl_uint);
+  // PoCL appends work_dim, three global offsets, and twelve exact-size and
+  // group-partition parameters.
+  dev->max_parameter_size
+      = POCL_CUDA_KERNEL_PARAMETER_BYTES
+        - POCL_CUDA_IMPLICIT_PARAMETER_COUNT * sizeof (cl_uint);
 
 #if (CUDA_DEVICE_CL_VERSION_MAJOR >= 3)
   dev->features = CUDA_DEVICE_FEATURES_30;
   dev->run_program_scope_variables_pass = CL_FALSE;
   dev->generic_as_support = CL_FALSE;
+  dev->non_uniform_work_group_support = CL_TRUE;
 
 #endif
   pocl_setup_opencl_c_with_version (dev);

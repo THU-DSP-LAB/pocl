@@ -25,6 +25,10 @@ uint get_nvvm_ntid_x();
 uint get_nvvm_ntid_y();
 uint get_nvvm_ntid_z();
 
+extern uint _enqueued_local_size_x;
+extern uint _enqueued_local_size_y;
+extern uint _enqueued_local_size_z;
+
 size_t _CL_OVERLOADABLE
 get_local_size(unsigned int dimindx)
 {
@@ -40,5 +44,11 @@ get_local_size(unsigned int dimindx)
 size_t _CL_OVERLOADABLE
 get_enqueued_local_size(unsigned int dimindx)
 {
-  return get_local_size(dimindx);
+  switch(dimindx)
+    {
+    case 0: return _enqueued_local_size_x;
+    case 1: return _enqueued_local_size_y;
+    case 2: return _enqueued_local_size_z;
+    default: return 1;
+    }
 }

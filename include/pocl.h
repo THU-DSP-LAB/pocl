@@ -206,6 +206,8 @@ typedef struct
   cl_kernel kernel;
   /* The launch data that can be passed to the kernel execution environment. */
   struct pocl_context pc;
+  /* Exact requested global size, retained for non-uniform device backends. */
+  size_t global_size[3];
   struct pocl_argument *arguments;
   /* Can be used to store/cache arbitrary device-specific data. */
   void *device_data;

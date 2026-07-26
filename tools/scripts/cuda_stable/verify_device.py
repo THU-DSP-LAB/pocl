@@ -56,7 +56,10 @@ EXPECTED_EXTENSION_VERSIONS = frozenset(
     f"{name}@{EXTENSION_VERSIONS.get(name, '1.0.0')}" for name in EXPECTED_EXTENSIONS
 )
 EXPECTED_FEATURE_VERSIONS = frozenset(f"{name}@3.0.0" for name in EXPECTED_FEATURES)
-EXPECTED_CONFORMANCE_VERSION = "v2026-07-17-00"
+EXPECTED_CONFORMANCE_VERSION = ""
+CUDA_KERNEL_PARAMETER_BYTES = 4352
+CUDA_IMPLICIT_PARAMETER_COUNT = 16
+CUDA_IMPLICIT_PARAMETER_BYTES = 4
 CL_FP_DENORM = 1 << 0
 CL_FP_INF_NAN = 1 << 1
 CL_FP_ROUND_TO_NEAREST = 1 << 2
@@ -77,7 +80,10 @@ EXPECTED_SCALARS = {
     "image_support": 0,
     "svm_capabilities": 1,
     "queue_properties": 1 << 1,
-    "max_parameter_size": 4352 - 4 * 4,
+    "max_parameter_size": (
+        CUDA_KERNEL_PARAMETER_BYTES
+        - CUDA_IMPLICIT_PARAMETER_COUNT * CUDA_IMPLICIT_PARAMETER_BYTES
+    ),
     "max_num_sub_groups": 32,
     "subgroup_forward_progress": 1,
     "atomic_memory_capabilities": (
@@ -86,7 +92,7 @@ EXPECTED_SCALARS = {
     "atomic_fence_capabilities": (
         (1 << 0) | (1 << 1) | (1 << 2) | (1 << 4) | (1 << 5)
     ),
-    "non_uniform_support": 0,
+    "non_uniform_support": 1,
     "work_group_collective_support": 1,
     "generic_address_support": 0,
     "pipe_support": 0,
@@ -117,8 +123,14 @@ def validate_strings(device: DeviceSnapshot) -> list[str]:
         actual = getattr(device, field)
         if actual != expected:
             failures.append(f"{field}: expected {expected!r}, found {actual!r}")
-    if "OpenCL 3.0" not in device.device_version or "CUDA-sm_89-v8" not in device.device_version:
-        failures.append(f"device_version does not identify OpenCL 3.0 CUDA-sm_89-v8: {device.device_version}")
+    if (
+        "OpenCL 3.0" not in device.device_version
+        or "CUDA-sm_89-v9" not in device.device_version
+    ):
+        failures.append(
+            "device_version does not identify OpenCL 3.0 CUDA-sm_89-v9: "
+            f"{device.device_version}"
+        )
     if device.il_versions != ("SPIR-V@1.0.0",):
         failures.append(
             f"il_versions: expected ['SPIR-V@1.0.0'], found {list(device.il_versions)}"

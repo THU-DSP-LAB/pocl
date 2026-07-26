@@ -37,14 +37,27 @@ extern uint _global_offset_x;
 extern uint _global_offset_y;
 extern uint _global_offset_z;
 
+extern uint _enqueued_local_size_x;
+extern uint _enqueued_local_size_y;
+extern uint _enqueued_local_size_z;
+extern uint _group_offset_x;
+extern uint _group_offset_y;
+extern uint _group_offset_z;
+
 size_t _CL_OVERLOADABLE
 get_global_id(unsigned int dimindx)
 {
   switch(dimindx)
     {
-    case 0: return get_nvvm_ntid_x() * get_nvvm_ctaid_x() + get_nvvm_tid_x() + _global_offset_x;
-    case 1: return get_nvvm_ntid_y() * get_nvvm_ctaid_y() + get_nvvm_tid_y() + _global_offset_y;
-    case 2: return get_nvvm_ntid_z() * get_nvvm_ctaid_z() + get_nvvm_tid_z() + _global_offset_z;
+    case 0: return _enqueued_local_size_x
+                   * (get_nvvm_ctaid_x() + _group_offset_x)
+                   + get_nvvm_tid_x() + _global_offset_x;
+    case 1: return _enqueued_local_size_y
+                   * (get_nvvm_ctaid_y() + _group_offset_y)
+                   + get_nvvm_tid_y() + _global_offset_y;
+    case 2: return _enqueued_local_size_z
+                   * (get_nvvm_ctaid_z() + _group_offset_z)
+                   + get_nvvm_tid_z() + _global_offset_z;
     default: return 0;
     }
 }

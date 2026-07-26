@@ -31,6 +31,12 @@
 
 #include <assert.h>
 
+static size_t
+pocl_ceil_div_size (size_t value, size_t divisor)
+{
+  return value / divisor + (value % divisor != 0);
+}
+
 cl_int
 pocl_kernel_calc_wg_size (cl_device_id dev, cl_kernel kernel,
                           unsigned device_i,
@@ -149,12 +155,16 @@ pocl_kernel_calc_wg_size (cl_device_id dev, cl_kernel kernel,
        * requirement will have to be limited to the cases of kernels compiled
        * with the -cl-uniform-work-group-size option
        */
-      POCL_RETURN_ERROR_COND ((global_x % local_x != 0),
-                              CL_INVALID_WORK_GROUP_SIZE);
-      POCL_RETURN_ERROR_COND ((global_y % local_y != 0),
-                              CL_INVALID_WORK_GROUP_SIZE);
-      POCL_RETURN_ERROR_COND ((global_z % local_z != 0),
-                              CL_INVALID_WORK_GROUP_SIZE);
+      if (!dev->non_uniform_work_group_support
+          || kernel->program->requires_uniform_work_group_size)
+        {
+          POCL_RETURN_ERROR_COND ((global_x % local_x != 0),
+                                  CL_INVALID_WORK_GROUP_SIZE);
+          POCL_RETURN_ERROR_COND ((global_y % local_y != 0),
+                                  CL_INVALID_WORK_GROUP_SIZE);
+          POCL_RETURN_ERROR_COND ((global_z % local_z != 0),
+                                  CL_INVALID_WORK_GROUP_SIZE);
+        }
     }
 
   if (dev->ops->verify_ndrange_sizes)
@@ -222,8 +232,9 @@ pocl_kernel_calc_wg_size (cl_device_id dev, cl_kernel kernel,
       "Preparing kernel %s with local size %u x %u x %u group "
       "sizes %u x %u x %u...\n",
       kernel->name, (unsigned)local_x, (unsigned)local_y, (unsigned)local_z,
-      (unsigned)(global_x / local_x), (unsigned)(global_y / local_y),
-      (unsigned)(global_z / local_z));
+      (unsigned)pocl_ceil_div_size (global_x, local_x),
+      (unsigned)pocl_ceil_div_size (global_y, local_y),
+      (unsigned)pocl_ceil_div_size (global_z, local_z));
 
   assert (local_x * local_y * local_z <= max_group_size);
   assert (local_x <= max_local_x);
@@ -231,9 +242,9 @@ pocl_kernel_calc_wg_size (cl_device_id dev, cl_kernel kernel,
   assert (local_z <= max_local_z);
 
   /* See TODO above for 'local must divide global' */
-  assert (global_x % local_x == 0);
-  assert (global_y % local_y == 0);
-  assert (global_z % local_z == 0);
+  assert (dev->non_uniform_work_group_support || global_x % local_x == 0);
+  assert (dev->non_uniform_work_group_support || global_y % local_y == 0);
+  assert (dev->non_uniform_work_group_support || global_z % local_z == 0);
 
 SKIP_WG_SIZE_CALCULATION:
   local_size[0] = local_x;
@@ -242,9 +253,9 @@ SKIP_WG_SIZE_CALCULATION:
   global_offset[0] = offset_x;
   global_offset[1] = offset_y;
   global_offset[2] = offset_z;
-  num_groups[0] = global_x / local_x;
-  num_groups[1] = global_y / local_y;
-  num_groups[2] = global_z / local_z;
+  num_groups[0] = pocl_ceil_div_size (global_x, local_x);
+  num_groups[1] = pocl_ceil_div_size (global_y, local_y);
+  num_groups[2] = pocl_ceil_div_size (global_z, local_z);
 
   return CL_SUCCESS;
 }
@@ -653,6 +664,11 @@ pocl_ndrange_kernel_common (cl_command_buffer_khr command_buffer,
   c->command.run.pc.global_offset[0] = offset[0];
   c->command.run.pc.global_offset[1] = offset[1];
   c->command.run.pc.global_offset[2] = offset[2];
+  c->command.run.global_size[0] = global_work_size[0];
+  c->command.run.global_size[1]
+      = work_dim > 1 ? global_work_size[1] : 1;
+  c->command.run.global_size[2]
+      = work_dim > 2 ? global_work_size[2] : 1;
 
   errcode = POname (clRetainKernel) (kernel);
   if (errcode != CL_SUCCESS)
