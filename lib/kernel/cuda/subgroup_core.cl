@@ -27,6 +27,7 @@ uint _pocl_warp_size;
 size_t _CL_OVERLOADABLE get_local_id (unsigned int dimindx);
 size_t _CL_OVERLOADABLE get_local_linear_id (void);
 size_t _CL_OVERLOADABLE get_local_size (unsigned int dimindx);
+size_t _CL_OVERLOADABLE get_enqueued_local_size (unsigned int dimindx);
 uint _pocl_sub_group_active_mask (void);
 
 void _CL_OVERLOADABLE
@@ -52,17 +53,29 @@ get_max_sub_group_size (void)
   return _pocl_warp_size;
 }
 
+static uint
+sub_group_count_for_size (size_t work_group_size)
+{
+  const size_t max_sub_group_size = get_max_sub_group_size ();
+  return (uint)((work_group_size + max_sub_group_size - 1)
+                / max_sub_group_size);
+}
+
 uint _CL_OVERLOADABLE
 get_num_sub_groups (void)
 {
-  uint tmp = get_local_size (0) * get_local_size (1) * get_local_size (2);
-  return (tmp + get_max_sub_group_size () - 1) / get_max_sub_group_size ();
+  const size_t work_group_size
+      = get_local_size (0) * get_local_size (1) * get_local_size (2);
+  return sub_group_count_for_size (work_group_size);
 }
 
 uint _CL_OVERLOADABLE
 get_enqueued_num_sub_groups (void)
 {
-  return get_num_sub_groups ();
+  const size_t enqueued_work_group_size
+      = get_enqueued_local_size (0) * get_enqueued_local_size (1)
+        * get_enqueued_local_size (2);
+  return sub_group_count_for_size (enqueued_work_group_size);
 }
 
 uint _CL_OVERLOADABLE

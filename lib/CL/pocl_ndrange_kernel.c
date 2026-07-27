@@ -37,6 +37,21 @@ pocl_ceil_div_size (size_t value, size_t divisor)
   return value / divisor + (value % divisor != 0);
 }
 
+static void
+pocl_store_global_size (_cl_command_run *run, cl_uint work_dim,
+                        const size_t *global_work_size)
+{
+  if (global_work_size == NULL)
+    {
+      memset (run->global_size, 0, sizeof (run->global_size));
+      return;
+    }
+
+  run->global_size[0] = global_work_size[0];
+  run->global_size[1] = work_dim > 1 ? global_work_size[1] : 1;
+  run->global_size[2] = work_dim > 2 ? global_work_size[2] : 1;
+}
+
 cl_int
 pocl_kernel_calc_wg_size (cl_device_id dev, cl_kernel kernel,
                           unsigned device_i,
@@ -664,11 +679,7 @@ pocl_ndrange_kernel_common (cl_command_buffer_khr command_buffer,
   c->command.run.pc.global_offset[0] = offset[0];
   c->command.run.pc.global_offset[1] = offset[1];
   c->command.run.pc.global_offset[2] = offset[2];
-  c->command.run.global_size[0] = global_work_size[0];
-  c->command.run.global_size[1]
-      = work_dim > 1 ? global_work_size[1] : 1;
-  c->command.run.global_size[2]
-      = work_dim > 2 ? global_work_size[2] : 1;
+  pocl_store_global_size (&c->command.run, work_dim, global_work_size);
 
   errcode = POname (clRetainKernel) (kernel);
   if (errcode != CL_SUCCESS)
