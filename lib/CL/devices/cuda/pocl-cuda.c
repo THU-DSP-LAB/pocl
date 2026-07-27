@@ -81,7 +81,11 @@ cudnnHandle_t cudnn;
   }
 
 #define CUDA_BUILTIN_KERNELS 6
+#if GPIDL_CUDA_FUNCTIONAL_MODEL
 #define CUDA_LATEST_CONFORMANCE_VERSION ""
+#else
+#define CUDA_LATEST_CONFORMANCE_VERSION "v2026-07-17-00"
+#endif
 #define CUDA_BINARY_FORMAT_VERSION "9"
 static const char *cuda_builtin_kernels[CUDA_BUILTIN_KERNELS]
     = { "pocl.mul.i32",

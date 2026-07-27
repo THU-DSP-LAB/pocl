@@ -242,10 +242,15 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
   dev->native_vector_width_long = 1;
   dev->native_vector_width_float = 1;
   dev->native_vector_width_double = 1;
+#if GPIDL_CUDA_FUNCTIONAL_MODEL
+  dev->preferred_vector_width_half = 0;
+  dev->native_vector_width_half = 0;
+#else
   dev->preferred_vector_width_half = 1;
   dev->native_vector_width_half = 1;
 
   dev->half_fp_config = CL_FP_ROUND_TO_NEAREST | CL_FP_INF_NAN;
+#endif
   dev->single_fp_config = CL_FP_ROUND_TO_NEAREST | CL_FP_ROUND_TO_ZERO
                           | CL_FP_ROUND_TO_INF | CL_FP_FMA | CL_FP_INF_NAN
                           | CL_FP_DENORM;
@@ -253,6 +258,7 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
                           | CL_FP_ROUND_TO_INF | CL_FP_FMA | CL_FP_INF_NAN
                           | CL_FP_DENORM;
 
+#if !GPIDL_CUDA_FUNCTIONAL_MODEL
   dev->dot_product_caps
       = CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_KHR
         | CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_PACKED_KHR;
@@ -264,6 +270,7 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
   dev->kernel_clock_caps = CL_DEVICE_KERNEL_CLOCK_SCOPE_DEVICE_KHR
                            | CL_DEVICE_KERNEL_CLOCK_SCOPE_WORK_GROUP_KHR
                            | CL_DEVICE_KERNEL_CLOCK_SCOPE_SUB_GROUP_KHR;
+#endif
 
   dev->local_mem_type = CL_LOCAL;
 
@@ -358,6 +365,10 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
   dev->max_mem_alloc_size = max (memfree, 128 * 1024 * 1024);
   dev->global_mem_size = memtotal;
 
+#if GPIDL_CUDA_FUNCTIONAL_MODEL
+  dev->svm_allocation_priority = 0;
+  dev->svm_caps = 0;
+#else
   if (data->supports_managed_memory)
     {
       dev->svm_allocation_priority = 2;
@@ -368,6 +379,7 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
       dev->svm_allocation_priority = 0;
       dev->svm_caps = 0;
     }
+#endif
 
 #ifdef ENABLE_SPIRV
   dev->supported_spir_v_versions = "SPIR-V_1.0";
@@ -375,6 +387,16 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
 
   /* OpenCL 3.0 properties */
   /* Minimum mandated capability */
+#if GPIDL_CUDA_FUNCTIONAL_MODEL
+  dev->atomic_memory_capabilities
+      = CL_DEVICE_ATOMIC_ORDER_RELAXED | CL_DEVICE_ATOMIC_SCOPE_WORK_GROUP;
+  dev->atomic_fence_capabilities = CL_DEVICE_ATOMIC_ORDER_RELAXED
+                                   | CL_DEVICE_ATOMIC_ORDER_ACQ_REL
+                                   | CL_DEVICE_ATOMIC_SCOPE_WORK_GROUP;
+  dev->sub_group_independent_forward_progress = CL_FALSE;
+  dev->max_num_sub_groups = 0;
+  dev->wg_collective_func_support = CL_FALSE;
+#else
   dev->atomic_memory_capabilities
       = CL_DEVICE_ATOMIC_ORDER_RELAXED | CL_DEVICE_ATOMIC_ORDER_ACQ_REL
         | CL_DEVICE_ATOMIC_ORDER_SEQ_CST | CL_DEVICE_ATOMIC_SCOPE_WORK_GROUP
@@ -384,11 +406,11 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
                                    | CL_DEVICE_ATOMIC_ORDER_SEQ_CST
                                    | CL_DEVICE_ATOMIC_SCOPE_WORK_GROUP
                                    | CL_DEVICE_ATOMIC_SCOPE_DEVICE;
-
   dev->sub_group_independent_forward_progress = CL_TRUE;
   dev->max_num_sub_groups
       = (dev->max_work_group_size + data->warp_size - 1) / data->warp_size;
   dev->wg_collective_func_support = CL_TRUE;
+#endif
 
   // CUDA kernels have a 4352-byte parameter area on CC >= 2.0 devices, but
   // PoCL appends work_dim, three global offsets, and twelve exact-size and
@@ -400,7 +422,7 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
 #if (CUDA_DEVICE_CL_VERSION_MAJOR >= 3)
   dev->features = CUDA_DEVICE_FEATURES_30;
   dev->run_program_scope_variables_pass = CL_FALSE;
-  dev->generic_as_support = CL_FALSE;
+  dev->generic_as_support = GPIDL_EXPERIMENTAL_CUDA_GENERIC_AS;
   dev->non_uniform_work_group_support = CL_TRUE;
 
 #endif

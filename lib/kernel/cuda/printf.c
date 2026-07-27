@@ -227,7 +227,14 @@ pocl_cuda_emit_vector_float (const pocl_cuda_printf_conversion *conversion,
   char scalar[8] __attribute__ ((aligned (8)));
   double value;
   if (conversion->length == POCL_CUDA_PRINTF_LENGTH_H)
+#ifdef cl_khr_fp16
     value = (double)((const half *)raw)[element];
+#else
+    {
+      vprintf ("<unsupported half format>", (char *)raw);
+      return -1;
+    }
+#endif
   else if (conversion->length == POCL_CUDA_PRINTF_LENGTH_L)
     value = ((const double *)raw)[element];
   else
