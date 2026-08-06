@@ -1140,7 +1140,8 @@ step5 make a writefile for chisel
   uint64_t pds_dev_mem_addr = 0;
   if (pds_src_size > 0) {
     POCL_MSG_PRINT_VENTUS("Preparing private memory of ventus:\n");
-    err = vt_buf_alloc(d->vt_device, pds_src_size, &pds_dev_mem_addr,0,0,0);
+    err = vt_buf_alloc(d->vt_device, pds_src_size, &pds_dev_mem_addr,
+                       VT_BUFFER_TYPE_PDS, 0, 0);
     if (err != 0) {
       abort();
     }
