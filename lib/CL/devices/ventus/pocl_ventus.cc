@@ -142,7 +142,8 @@ enum VentusKernelResourceFlags : uint32_t {
 struct VentusKernelLaunchResources final {
   uint64_t sgpr_usage = 0;
   uint64_t vgpr_usage = 0;
-  uint64_t pds_size_per_thread = 0;
+  uint64_t pds_static_per_thread = 0;
+  uint64_t pds_stack_size_per_thread = 0;
   uint64_t lds_static_per_wg = 0;
   uint64_t lds_stack_size_per_wf = 0;
 };
@@ -466,18 +467,10 @@ static bool normalize_ventus_kernel_resources(
       align_up_u64(resource.pds_static_bytes, kVentusResourceAlignment);
   const uint64_t pds_stack_aligned =
       align_up_u64(resource.pds_stack_peak_bytes, kVentusResourceAlignment);
-  uint64_t pds_size_per_thread = 0;
-  if (add_u64_overflow(pds_static_aligned, pds_stack_aligned,
-                       &pds_size_per_thread)) {
-    if (error != nullptr) {
-      *error = "pds size overflow";
-    }
-    return false;
-  }
-
   normalized->sgpr_usage = std::max(kVentusMinSgprUsage, sgpr_aligned);
   normalized->vgpr_usage = vgpr_aligned;
-  normalized->pds_size_per_thread = pds_size_per_thread;
+  normalized->pds_static_per_thread = pds_static_aligned;
+  normalized->pds_stack_size_per_thread = pds_stack_aligned;
   normalized->lds_static_per_wg = lds_static_aligned;
   normalized->lds_stack_size_per_wf = lds_stack_aligned;
   return true;
@@ -805,7 +798,14 @@ step5 make a writefile for chisel
     const uint64_t lds_stack_size_per_wf = resource->lds_stack_size_per_wf;
     uint64_t dynamic_lds_bytes = 0;
     uint64_t ldssize = 0;
-    const uint64_t pdssize = resource->pds_size_per_thread;
+    const uint64_t pds_stack_base_per_thread =
+        resource->pds_static_per_thread;
+    uint64_t pdssize = 0;
+    if (add_u64_overflow(pds_stack_base_per_thread,
+                         resource->pds_stack_size_per_thread, &pdssize)) {
+      POCL_MSG_ERR("ERROR: PDS per-thread size overflow\n");
+      abort();
+    }
     uint64_t pdsbase = 0;
     uint64_t knlbase = 0;
     const uint64_t sgpr_usage = resource->sgpr_usage;
@@ -1193,6 +1193,23 @@ step5 make a writefile for chisel
       static_cast<uint32_t>(lds_non_stack_bytes);
   memcpy(kernel_metadata + KNL_LDS_NON_STACK_SIZE,
          &lds_non_stack_bytes_32, 4);
+  if (pdssize > UINT32_MAX) {
+    POCL_MSG_ERR("ERROR: pdsSize 0x%lx out of 32-bit kernel metadata range\n",
+                 (unsigned long)pdssize);
+    abort();
+  }
+  const uint32_t pds_size_per_thread_32 = static_cast<uint32_t>(pdssize);
+  memcpy(kernel_metadata + KNL_PDS_SIZE_PER_THREAD,
+         &pds_size_per_thread_32, 4);
+  if (pds_stack_base_per_thread > UINT32_MAX) {
+    POCL_MSG_ERR("ERROR: pdsStackBase 0x%lx out of 32-bit kernel metadata range\n",
+                 (unsigned long)pds_stack_base_per_thread);
+    abort();
+  }
+  const uint32_t pds_stack_base_per_thread_32 =
+      static_cast<uint32_t>(pds_stack_base_per_thread);
+  memcpy(kernel_metadata + KNL_PDS_STACK_BASE_PER_THREAD,
+         &pds_stack_base_per_thread_32, 4);
 //memcpy(kernel_metadata+KNL_PRINT_ADDR,global_offset_32[0],4);
     POCL_MSG_PRINT_VENTUS("Allocating metadata space:\n");
   auto kernel_metadata_upload_scope = make_pocl_event(d, "kernel_metadata_upload");
