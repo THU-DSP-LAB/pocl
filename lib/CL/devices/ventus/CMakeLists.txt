@@ -30,6 +30,9 @@ endif(MSVC)
 set(VENTUS_DRIVER_COMMON_DIR "${CMAKE_SOURCE_DIR}/../driver/common")
 set(VENTUS_DRIVER_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../driver/include")
 
+find_package(fmt REQUIRED)
+find_package(spdlog REQUIRED)
+
 add_pocl_device_library(
   "pocl-devices-ventus"
   pocl_ventus.h
@@ -46,6 +49,7 @@ target_include_directories(
 )
 target_link_libraries(pocl-devices-ventus PRIVATE ventus_driver)
 target_link_libraries(pocl-devices-ventus PRIVATE elf)
+target_link_libraries(pocl-devices-ventus PRIVATE spdlog::spdlog fmt::fmt)
 target_link_directories(pocl-devices-ventus PRIVATE ${CMAKE_INSTALL_PREFIX}/lib)
 set_target_properties(pocl-devices-ventus PROPERTIES
     BUILD_RPATH "${VENTUS_INSTALL_PREFIX}/lib"
