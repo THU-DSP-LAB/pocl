@@ -34,6 +34,9 @@ extern "C"
 #pragma GCC visibility push(hidden)
 #endif
 
+void pocl_release_command_buffer_locks (_cl_command_node *cmd);
+void pocl_retain_migration_buffer_unlocked (cl_mem mem);
+
 #ifdef USE_POCL_MEMMANAGER
 
 void pocl_init_mem_manager (void);
@@ -66,6 +69,7 @@ cl_event pocl_mem_manager_new_event ();
 #define pocl_mem_manager_free_command(cmd)                                    \
   if ((cmd))                                                                  \
     {                                                                         \
+      pocl_release_command_buffer_locks (cmd);                               \
       if ((cmd)->buffered)                                                    \
         {                                                                     \
           POCL_MEM_FREE ((cmd)->sync.syncpoint.sync_point_wait_list);         \
@@ -102,10 +106,6 @@ int pocl_create_migration_commands (cl_device_id dev,
                                     uint64_t migration_size,
                                     cl_event *prev_migr_event);
 
-pocl_buffer_migration_info *
-pocl_convert_to_subbuffer_migrations (pocl_buffer_migration_info *buffer_usage,
-                                      cl_int *err);
-
 /* Sets the indirect_raw_ptrs of the kernel to the given list array
  * of pointers.
  *
@@ -114,13 +114,6 @@ pocl_convert_to_subbuffer_migrations (pocl_buffer_migration_info *buffer_usage,
 void
 pocl_reset_indirect_ptrs (cl_kernel kernel, void **ptrs, size_t n);
 
-/* Increments a buffer's reference counter. */
-#define POCL_RETAIN_BUFFER_UNLOCKED(__OBJ__)                                  \
-  do                                                                          \
-    {                                                                         \
-      ++((__OBJ__)->pocl_refcount);                                           \
-    }                                                                         \
-  while (0)
 
 #endif
 

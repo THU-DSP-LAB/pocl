@@ -1,3 +1,69 @@
+/* Inline queues retain their existing native readiness wait. Threaded queues
+ * defer unsubmitted dependencies through completion notifications instead. */
+static pocl_cuda_event_data_t *
+pocl_cuda_wait_submitted_dependency (cl_event dependency)
+{
+  for (;;)
+    {
+      pocl_cuda_event_data_t *data = POCL_ATOMIC_LOAD (dependency->data);
+      if (data != NULL && POCL_ATOMIC_LOAD (data->events_ready))
+        return data;
+    }
+}
+
+static int
+pocl_cuda_enqueue_native_dependency (cl_event dependency, cl_command_queue queue)
+{
+  if (dependency->queue == NULL
+      || dependency->queue->device->ops != queue->device->ops)
+    return 0;
+  pocl_cuda_event_data_t *data = POCL_ATOMIC_LOAD (dependency->data);
+  if (!((pocl_cuda_queue_data_t *)queue->data)->use_threads)
+    data = pocl_cuda_wait_submitted_dependency (dependency);
+  if (data == NULL || !POCL_ATOMIC_LOAD (data->events_ready))
+    return 0;
+  if (dependency->queue != queue)
+    {
+      CUstream stream = ((pocl_cuda_queue_data_t *)queue->data)->stream;
+      CUresult result = cuStreamWaitEvent (stream, data->end, 0);
+      CUDA_CHECK_ABORT (result, "cuStreamWaitEvent");
+    }
+  return 1;
+}
+
+static void
+pocl_cuda_wait_dependencies (_cl_command_node *node, cl_command_queue queue)
+{
+  pocl_cuda_event_data_t *data = node->sync.event.event->data;
+  unsigned dependency_count = 0;
+  event_node *dependency;
+  LL_FOREACH (node->sync.event.event->wait_list, dependency)
+    ++dependency_count;
+  cl_event *host_wait_events = alloca (dependency_count * sizeof (cl_event));
+  data->host_wait_events = host_wait_events;
+  data->host_wait_slots = 0;
+  LL_FOREACH (node->sync.event.event->wait_list, dependency)
+    {
+      cl_event event = dependency->event;
+      if (event->status <= CL_COMPLETE)
+        continue;
+      if (pocl_cuda_enqueue_native_dependency (event, queue))
+        continue;
+      host_wait_events[data->host_wait_slots++] = event;
+      ++data->num_ext_events;
+    }
+  if (data->num_ext_events)
+    {
+      if (!((pocl_cuda_queue_data_t *)queue->data)->use_threads)
+        POCL_ABORT ("Can't handle non-CUDA dependencies without queue threads\n");
+      while (data->num_ext_events)
+        PTHREAD_CHECK (pthread_cond_wait (&data->event_cond,
+                                          &node->sync.event.event->pocl_lock));
+    }
+  data->host_wait_events = NULL;
+  data->host_wait_slots = 0;
+}
+
 void
 pocl_cuda_submit_node (_cl_command_node *node, cl_command_queue cq, int locked)
 {
@@ -10,56 +76,7 @@ pocl_cuda_submit_node (_cl_command_node *node, cl_command_queue cq, int locked)
   pocl_cuda_event_data_t *event_data
       = (pocl_cuda_event_data_t *)node->sync.event.event->data;
 
-  /* Process event dependencies */
-  event_node *dep = NULL;
-  LL_FOREACH (node->sync.event.event->wait_list, dep)
-  {
-    /* If it is in the process of completing, just skip it */
-    if (dep->event->status <= CL_COMPLETE)
-      continue;
-
-    /* Add CUDA event dependency */
-    if (dep->event->command_type != CL_COMMAND_USER
-        && dep->event->queue->device->ops == cq->device->ops)
-      {
-        /* Block stream on event, but only for different queues */
-        if (dep->event->queue != node->sync.event.event->queue)
-          {
-            pocl_cuda_event_data_t *dep_data
-                = (pocl_cuda_event_data_t *)dep->event->data;
-
-            /* Wait until dependency has finished being submitted */
-            while (!dep_data->events_ready)
-              ;
-
-            result = cuStreamWaitEvent (stream, dep_data->end, 0);
-            CUDA_CHECK_ABORT (result, "cuStreamWaitEvent");
-          }
-      }
-    else
-      {
-        if (!((pocl_cuda_queue_data_t *)cq->data)->use_threads)
-          POCL_ABORT (
-              "Can't handle non-CUDA dependencies without queue threads\n");
-
-        event_data->num_ext_events++;
-      }
-    }
-
-  /* CUDA async copies involving pageable host memory may block in the driver
-   * when they are enqueued behind an unresolved stream wait. Waiting for
-   * external dependencies on the host keeps the submit thread out of CUDA
-   * until the user or foreign-device event is complete. The event lock and
-   * condition variable make the dependency count immune to missed wakeups. */
-  if (event_data->num_ext_events)
-    {
-      if (!((pocl_cuda_queue_data_t *)cq->data)->use_threads)
-        POCL_ABORT (
-            "Can't handle non-CUDA dependencies without queue threads\n");
-      while (event_data->num_ext_events)
-        PTHREAD_CHECK (pthread_cond_wait (&event_data->event_cond,
-                                          &node->sync.event.event->pocl_lock));
-    }
+  pocl_cuda_wait_dependencies (node, cq);
 
   /* Create and record event for command start if profiling enabled */
   if (cq->properties & CL_QUEUE_PROFILING_ENABLE)
@@ -267,5 +284,5 @@ pocl_cuda_submit_node (_cl_command_node *node, cl_command_queue cq, int locked)
   result = cuEventRecord (event_data->end, stream);
   CUDA_CHECK_ABORT (result, "cuEventRecord");
 
-  event_data->events_ready = 1;
+  POCL_ATOMIC_STORE (event_data->events_ready, 1);
 }

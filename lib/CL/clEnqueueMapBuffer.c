@@ -127,7 +127,7 @@ POname(clEnqueueMapBuffer)(cl_command_queue command_queue,
   if (errcode != CL_SUCCESS)
     goto ERROR;
 
-  char rdonly = (map_flags & CL_MAP_READ);
+  char rdonly = (map_flags == CL_MAP_READ);
 
   errcode = pocl_create_command (
     &cmd, command_queue, CL_COMMAND_MAP_BUFFER, event, num_events_in_wait_list,

@@ -35,7 +35,7 @@ endif ()
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-set(C_PROGRAMS_TO_BUILD test_clFinish test_clGetDeviceInfo test_clGetEventInfo
+set(C_PROGRAMS_TO_BUILD test_subbuffer_ranges test_clFinish test_clGetDeviceInfo test_clGetEventInfo
   test_clCreateProgramWithBinary test_clGetSupportedImageFormats
   test_clSetEventCallback test_clEnqueueNativeKernel test_clBuildProgram
   test_clCreateKernelsInProgram test_clCreateKernel test_clGetKernelArgInfo
@@ -614,3 +614,6 @@ set_property(TEST
   "runtime/test_subbuffers"
   "runtime/test_queue_creation_with_hints"
   APPEND PROPERTY LABELS "level0")
+
+add_test(NAME "runtime/test_subbuffer_ranges" COMMAND test_subbuffer_ranges)
+set_tests_properties("runtime/test_subbuffer_ranges" PROPERTIES TIMEOUT 60 LABELS "cuda")

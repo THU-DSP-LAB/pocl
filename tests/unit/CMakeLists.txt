@@ -53,3 +53,10 @@ endfunction()
 
 add_unit_test(test_fs.cc)
 add_unit_test(test_runcmds.cc)
+
+add_executable(test_buffer_ranges test_buffer_ranges.c buffer_range_reference.c
+  ${CMAKE_SOURCE_DIR}/lib/CL/pocl_buffer_ranges.c)
+target_include_directories(test_buffer_ranges PRIVATE
+  ${CMAKE_SOURCE_DIR}/lib/CL ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME "unit/test_buffer_ranges" COMMAND test_buffer_ranges)
+set_tests_properties("unit/test_buffer_ranges" PROPERTIES TIMEOUT 60)

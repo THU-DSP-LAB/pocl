@@ -162,9 +162,11 @@ typedef struct pocl_cuda_event_data_s
 {
   CUevent start;
   CUevent end;
-  volatile int events_ready;
+  int events_ready;
   pthread_cond_t event_cond;
   unsigned num_ext_events;
+  unsigned host_wait_slots;
+  cl_event *host_wait_events;
   int use_threads;
 } pocl_cuda_event_data_t;
 

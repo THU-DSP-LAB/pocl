@@ -585,6 +585,9 @@ struct _cl_command_node
   /* List of buffers this command accesses, used for inserting migrations */
   pocl_buffer_migration_info *migr_infos;
 
+  /* Planning ownership ends when this immediate command is enqueued. */
+  pocl_buffer_migration_info *locked_buffer_roots;
+
   /* back pointer to the command buffer, when this command is recorded
    * in a cl_khr_command_buffer. NULL for other (non-buffered) commands */
   cl_command_buffer_khr cmd_buffer;

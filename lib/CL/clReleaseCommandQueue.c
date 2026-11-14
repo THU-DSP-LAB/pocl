@@ -23,6 +23,7 @@
 
 #include "pocl_cl.h"
 #include "pocl_util.h"
+#include "pocl_migration_queues.h"
 #include "utlist.h"
 #include "pocl_shared.h"
 
@@ -59,6 +60,7 @@ releaseCommandQueue (cl_command_queue command_queue, int user_ref)
       cl_context context = command_queue->context;
       cl_device_id device = command_queue->device;
 
+      pocl_release_migration_queues (command_queue);
       TP_FREE_QUEUE (context->id, command_queue->id);
 
       POCL_ATOMIC_DEC (queue_c);

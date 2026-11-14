@@ -89,7 +89,7 @@ POname(clEnqueueUnmapMemObject)(cl_command_queue command_queue,
                         "Could not find a mapping for this memobj (id %zu)\n",
                         memobj->id);
 
-  char rdonly = (mapping->map_flags & CL_MAP_READ);
+  char rdonly = (mapping->map_flags == CL_MAP_READ);
 
   errcode = pocl_create_command (
     &cmd, command_queue, CL_COMMAND_UNMAP_MEM_OBJECT, event,

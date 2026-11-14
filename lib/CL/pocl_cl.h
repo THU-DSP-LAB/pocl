@@ -1587,6 +1587,9 @@ struct _cl_command_queue {
   cl_command_queue_properties properties;
   /* implementation */
 
+  /* Migration queues owned by this queue, indexed by context device. */
+  cl_command_queue *migration_queues;
+
   /* Events of the enqueued commands in enqueue order. */
   cl_event events;
   struct _cl_event *barrier;
@@ -1652,6 +1655,7 @@ struct _cl_command_buffer_khr
    * safely run. Does not account for migrations that need to happen between
    * commands in the same buffer. */
   pocl_buffer_migration_info *migr_infos;
+
 };
 
 #define POCL_ON_SUB_MISALIGN(mem, que, operation)                             \
@@ -1750,6 +1754,9 @@ struct _cl_mem {
   /* The implicit sub-buffers covering the empty region.  These will be added
      on-demand when optimizing the migrations. */
   cl_mem_list_item_t *implicit_sub_buffers;
+
+  /* Serialize partition changes and migration version planning per root. */
+  pocl_lock_t migration_lock;
 
   /* Set to 1 for implicit sub-buffers, to differentiate from user-defined
      sub-buffers. */

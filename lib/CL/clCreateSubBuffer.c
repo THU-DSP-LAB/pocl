@@ -23,129 +23,134 @@
 */
 
 #include "devices.h"
+#include "pocl_buffer_ranges.h"
 #include "pocl_cl.h"
 #include "pocl_tensor_util.h"
 #include "pocl_util.h"
 #include "utlist.h"
 
-CL_API_ENTRY cl_mem CL_API_CALL
-POname (clCreateSubBuffer) (cl_mem parent,
-                            cl_mem_flags flags,
-                            cl_buffer_create_type buffer_create_type,
-                            const void *buffer_create_info,
-                            cl_int *errcode_ret) CL_API_SUFFIX__VERSION_1_1
+typedef struct
 {
-  cl_mem mem = NULL;
-  int errcode, parent_locked = 0;
+  cl_mem_flags flags;
+  cl_buffer_create_type type;
+  const void *info;
+} subbuffer_request;
 
-  POCL_GOTO_ERROR_COND ((!IS_CL_OBJECT_VALID (parent)), CL_INVALID_MEM_OBJECT);
+typedef struct
+{
+  cl_int status;
+  cl_mem_flags flags;
+  cl_buffer_region region;
+  const cl_tensor_view_exp *tensor;
+} subbuffer_description;
 
-  POCL_GOTO_ERROR_ON ((parent->is_image || IS_IMAGE1D_BUFFER (parent)),
-                      CL_INVALID_MEM_OBJECT,
-                      "subbuffers on images not supported\n");
+static cl_int
+validate_subbuffer_parent (cl_mem parent, const subbuffer_request *request)
+{
+  POCL_RETURN_ERROR_COND (!IS_CL_OBJECT_VALID (parent), CL_INVALID_MEM_OBJECT);
+  POCL_RETURN_ERROR_ON (parent->is_image || IS_IMAGE1D_BUFFER (parent),
+                        CL_INVALID_MEM_OBJECT,
+                        "subbuffers on images not supported\n");
+  POCL_RETURN_ERROR_ON (parent->parent != NULL, CL_INVALID_MEM_OBJECT,
+                        "parent is already a sub-buffer\n");
+  POCL_RETURN_ERROR_COND (request->info == NULL, CL_INVALID_VALUE);
+  POCL_RETURN_ERROR_COND (request->type != CL_BUFFER_CREATE_TYPE_REGION
+                              && request->type
+                                     != CL_BUFFER_CREATE_TYPE_TENSOR_VIEW_EXP,
+                          CL_INVALID_VALUE);
+  return CL_SUCCESS;
+}
 
-  POCL_GOTO_ERROR_ON ((parent->parent != NULL), CL_INVALID_MEM_OBJECT,
-                      "parent is already a sub-buffer\n");
+static cl_int
+validate_subbuffer_device_flags (cl_mem_flags parent, cl_mem_flags flags)
+{
+  POCL_RETURN_ERROR_ON (
+      parent & CL_MEM_WRITE_ONLY
+          && flags & (CL_MEM_READ_WRITE | CL_MEM_READ_ONLY),
+      CL_INVALID_VALUE,
+      "sub-buffer access conflicts with write-only parent\n");
+  POCL_RETURN_ERROR_ON (parent & CL_MEM_READ_ONLY
+                            && flags & (CL_MEM_READ_WRITE | CL_MEM_WRITE_ONLY),
+                        CL_INVALID_VALUE,
+                        "sub-buffer access conflicts with read-only parent\n");
+  POCL_RETURN_ERROR_ON (
+      flags
+          & (CL_MEM_USE_HOST_PTR | CL_MEM_ALLOC_HOST_PTR
+             | CL_MEM_COPY_HOST_PTR),
+      CL_INVALID_VALUE,
+      "sub-buffer cannot specify host-pointer allocation flags\n");
+  return CL_SUCCESS;
+}
 
-  POCL_GOTO_ERROR_COND((buffer_create_info == NULL), CL_INVALID_VALUE);
+static cl_int
+validate_subbuffer_host_flags (cl_mem_flags parent, cl_mem_flags flags)
+{
+  POCL_RETURN_ERROR_ON (
+      parent & CL_MEM_HOST_WRITE_ONLY && flags & CL_MEM_HOST_READ_ONLY,
+      CL_INVALID_VALUE, "sub-buffer host access conflicts with parent\n");
+  POCL_RETURN_ERROR_ON (
+      parent & CL_MEM_HOST_READ_ONLY && flags & CL_MEM_HOST_WRITE_ONLY,
+      CL_INVALID_VALUE, "sub-buffer host access conflicts with parent\n");
+  POCL_RETURN_ERROR_ON (
+      parent & CL_MEM_HOST_NO_ACCESS
+          && flags & (CL_MEM_HOST_READ_ONLY | CL_MEM_HOST_WRITE_ONLY),
+      CL_INVALID_VALUE,
+      "sub-buffer host access conflicts with inaccessible parent\n");
+  return CL_SUCCESS;
+}
 
-  POCL_GOTO_ERROR_COND (
-    (buffer_create_type != CL_BUFFER_CREATE_TYPE_REGION
-     && buffer_create_type != CL_BUFFER_CREATE_TYPE_TENSOR_VIEW_EXP),
-    CL_INVALID_VALUE);
+static cl_int
+validate_subbuffer_region (cl_mem parent, cl_buffer_region region)
+{
+  POCL_RETURN_ERROR_ON (region.size == 0 && !parent->has_device_address,
+                        CL_INVALID_BUFFER_SIZE,
+                        "buffer_create_info->size == 0\n");
+  POCL_RETURN_ERROR_ON (
+      !pocl_buffer_range_valid (
+          (pocl_buffer_range){ region.origin, region.size }, parent->size),
+      CL_INVALID_VALUE, "buffer_create_info region exceeds buffer size\n");
+  POCL_RETURN_ERROR_ON (
+      !parent->has_device_address
+          && region.origin % parent->context->min_buffer_alignment != 0,
+      CL_MISALIGNED_SUB_BUFFER_OFFSET,
+      "sub-buffer origin is not device aligned\n");
+  return CL_SUCCESS;
+}
 
-  cl_buffer_region temp_region_info;
-  const cl_buffer_region *info
-    = buffer_create_type == CL_BUFFER_CREATE_TYPE_REGION
-        ? (const cl_buffer_region *)buffer_create_info
-        : NULL;
-  const cl_tensor_view_exp *tr_info
-    = buffer_create_type == CL_BUFFER_CREATE_TYPE_TENSOR_VIEW_EXP
-        ? (const cl_tensor_view_exp *)buffer_create_info
-        : NULL;
-
-  if (buffer_create_type == CL_BUFFER_CREATE_TYPE_TENSOR_VIEW_EXP)
+static subbuffer_description
+parse_subbuffer_description (cl_mem parent, const subbuffer_request *request)
+{
+  subbuffer_description result
+      = { .status = CL_SUCCESS, .flags = request->flags };
+  if (request->type == CL_BUFFER_CREATE_TYPE_TENSOR_VIEW_EXP)
     {
-      POCL_GOTO_ERROR_ON ((pocl_check_tensor_desc (tr_info->tensor_desc)),
-                          CL_INVALID_PROPERTY, "invalid tensor description.");
-
-      POCL_GOTO_ERROR_ON (!tr_info->tensor_desc->layout, CL_INVALID_VALUE,
-                          "tensor views datalayout is not well defined.");
-
-      temp_region_info.origin = tr_info->origin;
-      temp_region_info.size = pocl_tensor_data_size (tr_info->tensor_desc);
-      info = &temp_region_info;
+      result.tensor = request->info;
+      if (pocl_check_tensor_desc (result.tensor->tensor_desc))
+        result.status = CL_INVALID_PROPERTY;
+      else if (!result.tensor->tensor_desc->layout)
+        result.status = CL_INVALID_VALUE;
+      else
+        result.region = (cl_buffer_region){ result.tensor->origin,
+                                            pocl_tensor_data_size (
+                                                result.tensor->tensor_desc) };
     }
-  assert (info);
+  else
+    result.region = *(const cl_buffer_region *)request->info;
+  if (result.status == CL_SUCCESS)
+    result.status = validate_subbuffer_region (parent, result.region);
+  if (result.status == CL_SUCCESS)
+    result.status
+        = validate_subbuffer_device_flags (parent->flags, request->flags);
+  if (result.status == CL_SUCCESS)
+    result.status
+        = validate_subbuffer_host_flags (parent->flags, request->flags);
+  return result;
+}
 
-  POCL_GOTO_ERROR_ON ((info->size == 0 && !parent->has_device_address),
-                      CL_INVALID_BUFFER_SIZE,
-                      "buffer_create_info->size == 0\n");
-
-  POCL_GOTO_ERROR_ON ((info->size + info->origin > parent->size),
-                      CL_INVALID_VALUE,
-                      "buffer_create_info->size+origin > buffer size\n");
-
-  POCL_GOTO_ERROR_ON (
-    (parent->flags & CL_MEM_WRITE_ONLY
-     && flags & (CL_MEM_READ_WRITE | CL_MEM_READ_ONLY)),
-    CL_INVALID_VALUE,
-    "Invalid flags: parent is CL_MEM_WRITE_ONLY, requested sub-parent "
-    "CL_MEM_READ_WRITE or CL_MEM_READ_ONLY\n");
-
-  POCL_GOTO_ERROR_ON (
-    (parent->flags & CL_MEM_READ_ONLY
-     && flags & (CL_MEM_READ_WRITE | CL_MEM_WRITE_ONLY)),
-    CL_INVALID_VALUE,
-    "Invalid flags: parent is CL_MEM_READ_ONLY, requested sub-parent "
-    "CL_MEM_READ_WRITE or CL_MEM_WRITE_ONLY\n");
-
-  POCL_GOTO_ERROR_ON((flags & (CL_MEM_USE_HOST_PTR | CL_MEM_ALLOC_HOST_PTR |
-                CL_MEM_COPY_HOST_PTR)), CL_INVALID_VALUE,
-                "Invalid flags: (CL_MEM_USE_HOST_PTR | CL_MEM_ALLOC_HOST_PTR | "
-                "CL_MEM_COPY_HOST_PTR)\n");
-
-  POCL_GOTO_ERROR_ON (
-    (parent->flags & CL_MEM_HOST_WRITE_ONLY && flags & CL_MEM_HOST_READ_ONLY),
-    CL_INVALID_VALUE,
-    "Invalid flags: parent is CL_MEM_HOST_WRITE_ONLY, requested sub-parent "
-    "CL_MEM_HOST_READ_ONLY\n");
-
-  POCL_GOTO_ERROR_ON (
-    (parent->flags & CL_MEM_HOST_READ_ONLY && flags & CL_MEM_HOST_WRITE_ONLY),
-    CL_INVALID_VALUE,
-    "Invalid flags: parent is CL_MEM_HOST_READ_ONLY, requested sub-parent "
-    "CL_MEM_HOST_WRITE_ONLY\n");
-
-  POCL_GOTO_ERROR_ON (
-    (parent->flags & CL_MEM_HOST_NO_ACCESS
-     && flags & (CL_MEM_HOST_READ_ONLY | CL_MEM_HOST_WRITE_ONLY)),
-    CL_INVALID_VALUE,
-    "Invalid flags: parent is CL_MEM_HOST_NO_ACCESS, requested sub-parent "
-    "(CL_MEM_HOST_READ_ONLY | CL_MEM_HOST_WRITE_ONLY)\n");
-
-  POCL_GOTO_ERROR_ON (
-    (!parent->has_device_address
-     && (info->origin % parent->context->min_buffer_alignment) != 0),
-    CL_MISALIGNED_SUB_BUFFER_OFFSET,
-    "no devices for which the origin value (%zu) is "
-    "aligned to the CL_DEVICE_MEM_BASE_ADDR_ALIGN value (%zu)\n",
-    info->origin, parent->context->min_buffer_alignment);
-
-  mem = (cl_mem) calloc (1, sizeof (struct _cl_mem));
-  POCL_GOTO_ERROR_COND ((mem == NULL), CL_OUT_OF_HOST_MEMORY);
-
-  POCL_INIT_OBJECT (mem, parent);
-
-  mem->device_ptrs = (pocl_mem_identifier *)calloc (
-    POCL_ATOMIC_LOAD (pocl_num_devices), sizeof (pocl_mem_identifier));
-  POCL_GOTO_ERROR_COND ((mem->device_ptrs == NULL), CL_OUT_OF_HOST_MEMORY);
-
-  mem->context = parent->context;
-  mem->parent = parent;
-  mem->latest_version = parent->latest_version;
-  mem->mem_host_ptr_version = parent->mem_host_ptr_version;
-
+static void
+inherit_subbuffer_device_version (cl_mem mem)
+{
+  cl_mem parent = mem->parent;
   /* Initially the sub-buffer's latest contents are in the same memory where
      the parent's latest contents are due to aliasing. */
   for (unsigned i = 0; i < mem->context->num_devices; ++i)
@@ -157,39 +162,14 @@ POname (clCreateSubBuffer) (cl_mem parent,
           break;
         }
     }
+}
 
-  mem->type = CL_MEM_OBJECT_BUFFER;
-  mem->size = info->size;
-  mem->origin = info->origin;
-  pocl_cl_mem_inherit_flags (mem, parent, flags);
-  mem->flags |= parent->flags & CL_MEM_DEVICE_PRIVATE_ADDRESS_EXT;
-  mem->has_device_address = parent->has_device_address;
-  /* All other struct members are NULL (not valid). */
-
-  if (tr_info)
-    {
-      mem->num_properties = 1;
-      mem->properties[0] = CL_MEM_TENSOR_EXP;
-      POCL_GOTO_ERROR_ON (
-        (pocl_copy_tensor_desc2mem (mem, tr_info->tensor_desc)),
-        CL_OUT_OF_HOST_MEMORY,
-        "Couldn't allocate space for tensor description.");
-    }
-
-  /* The sub-parents should keep the parent parent alive until all of them are
-   * released. */
-  POCL_RETAIN_OBJECT (mem->parent);
-  POCL_RETAIN_OBJECT (mem->context);
-
-  cl_mem_list_item_t *sub_buf
-    = (cl_mem_list_item_t *)calloc (1, sizeof (cl_mem_list_item_t));
-  sub_buf->mem = mem;
-  POCL_GOTO_ERROR_COND ((mem->device_ptrs == NULL), CL_OUT_OF_HOST_MEMORY);
-
-  POCL_LOCK_OBJ (parent); parent_locked = 1;
-
-  LL_APPEND (parent->sub_buffers, sub_buf);
-
+static cl_int
+initialize_subbuffer_device_aliases (cl_mem mem)
+{
+  cl_mem parent = mem->parent;
+  const cl_buffer_region region = { mem->origin, mem->size };
+  const cl_buffer_region *info = &region;
   for (unsigned i = 0; i < parent->context->num_devices; ++i)
     {
       cl_device_id dev = parent->context->devices[i];
@@ -199,11 +179,11 @@ POname (clCreateSubBuffer) (cl_mem parent,
              the parent parent yet. Let's do so now to get addresses to the
              sub-parents generated. */
           int err
-            = dev->ops->alloc_mem_obj (dev, parent, parent->mem_host_ptr);
-          POCL_GOTO_ERROR_COND ((err != CL_SUCCESS), err);
-          POCL_GOTO_ERROR_COND (
-            (parent->device_ptrs[dev->global_mem_id].mem_ptr == NULL),
-            CL_MEM_OBJECT_ALLOCATION_FAILURE);
+              = dev->ops->alloc_mem_obj (dev, parent, parent->mem_host_ptr);
+          if (err != CL_SUCCESS)
+            return err;
+          if (parent->device_ptrs[dev->global_mem_id].mem_ptr == NULL)
+            return CL_MEM_OBJECT_ALLOCATION_FAILURE;
         }
 
       mem->device_ptrs[dev->global_mem_id].mem_ptr
@@ -215,32 +195,22 @@ POname (clCreateSubBuffer) (cl_mem parent,
       if (dev->ops->alloc_subbuffer != NULL)
         {
           int ret_val = dev->ops->alloc_subbuffer (dev, mem);
-          POCL_GOTO_ERROR_COND ((ret_val != CL_SUCCESS), ret_val);
+          if (ret_val != CL_SUCCESS)
+            return ret_val;
         }
 
       if (mem->has_device_address)
         mem->device_ptrs[dev->global_mem_id].device_addr
-          = (char *)parent->device_ptrs[dev->global_mem_id].device_addr
-            + info->origin;
+            = (char *)parent->device_ptrs[dev->global_mem_id].device_addr
+              + info->origin;
     }
-  if (parent->mem_host_ptr != NULL)
-    mem->mem_host_ptr = (char *)parent->mem_host_ptr + info->origin;
+  return CL_SUCCESS;
+}
 
-  POCL_UNLOCK_OBJ (parent); parent_locked = 0;
-
-  POCL_MSG_PRINT_MEMORY ("Created sub-buffer %zu (%p) with size %zu, origin "
-                         "%zu and parent %zu (%p)\n",
-                         mem->id, mem, info->size, info->origin,
-                         mem->parent->id, mem->parent);
-
-  if (errcode_ret != NULL)
-    *errcode_ret = CL_SUCCESS;
-  return mem;
-
-ERROR:
-  if (parent_locked)
-    POCL_UNLOCK_OBJ (parent);
-
+static void
+destroy_partial_subbuffer (cl_mem mem)
+{
+  cl_mem parent = mem == NULL ? NULL : mem->parent;
   if (mem != NULL && mem->device_ptrs)
     {
       for (unsigned i = 0; i < parent->context->num_devices; ++i)
@@ -253,11 +223,153 @@ ERROR:
       POCL_MEM_FREE (mem->device_ptrs);
     }
 
-  POCL_MEM_FREE(mem);
-  if(errcode_ret)
-  {
-    *errcode_ret = errcode;
-  }
+  if (mem != NULL)
+    {
+      POCL_MEM_FREE (mem->tensor_layout);
+      POCL_DESTROY_OBJECT (mem);
+    }
+  POCL_MEM_FREE (mem);
+}
+
+static cl_int
+configure_subbuffer_description (cl_mem mem,
+                                 const subbuffer_description *description)
+{
+  cl_mem parent = mem->parent;
+  const cl_tensor_view_exp *tr_info = description->tensor;
+  mem->type = CL_MEM_OBJECT_BUFFER;
+  mem->size = description->region.size;
+  mem->origin = description->region.origin;
+  pocl_cl_mem_inherit_flags (mem, parent, description->flags);
+  mem->flags |= parent->flags & CL_MEM_DEVICE_PRIVATE_ADDRESS_EXT;
+  mem->has_device_address = parent->has_device_address;
+  /* All other struct members are NULL (not valid). */
+
+  if (tr_info)
+    {
+      mem->num_properties = 1;
+      mem->properties[0] = CL_MEM_TENSOR_EXP;
+      if (pocl_copy_tensor_desc2mem (mem, tr_info->tensor_desc))
+        return CL_OUT_OF_HOST_MEMORY;
+    }
+
+  return CL_SUCCESS;
+}
+
+static cl_mem
+allocate_subbuffer (cl_mem parent, const subbuffer_description *description,
+                    cl_int *status)
+{
+  *status = CL_OUT_OF_HOST_MEMORY;
+  cl_mem mem = calloc (1, sizeof (*mem));
+  if (mem == NULL)
+    return NULL;
+  POCL_INIT_OBJECT (mem, parent);
+  mem->device_ptrs = calloc (POCL_ATOMIC_LOAD (pocl_num_devices),
+                             sizeof (*mem->device_ptrs));
+  if (mem->device_ptrs == NULL)
+    {
+      destroy_partial_subbuffer (mem);
+      return NULL;
+    }
+  mem->context = parent->context;
+  mem->parent = parent;
+  POCL_LOCK_OBJ (parent);
+  mem->latest_version = parent->latest_version;
+  mem->mem_host_ptr_version = parent->mem_host_ptr_version;
+  inherit_subbuffer_device_version (mem);
+  POCL_UNLOCK_OBJ (parent);
+  *status = configure_subbuffer_description (mem, description);
+  if (*status != CL_SUCCESS)
+    {
+      destroy_partial_subbuffer (mem);
+      return NULL;
+    }
+  return mem;
+}
+
+static cl_mem
+create_subbuffer_object (cl_mem parent,
+                         const subbuffer_description *description,
+                         cl_int *errcode_ret)
+{
+  cl_mem mem = NULL;
+  int errcode, parent_locked = 0, references_retained = 0;
+  cl_mem_list_item_t *sub_buf = NULL;
+  const cl_buffer_region *info = &description->region;
+  mem = allocate_subbuffer (parent, description, &errcode);
+  if (mem == NULL)
+    goto ERROR;
+
+  sub_buf = calloc (1, sizeof (*sub_buf));
+  POCL_GOTO_ERROR_COND ((sub_buf == NULL), CL_OUT_OF_HOST_MEMORY);
+  sub_buf->mem = mem;
+  POCL_RETAIN_OBJECT (mem->parent);
+  POCL_RETAIN_OBJECT (mem->context);
+  references_retained = 1;
+
+  POCL_LOCK_OBJ (parent);
+  parent_locked = 1;
+
+  LL_APPEND (parent->sub_buffers, sub_buf);
+
+  errcode = initialize_subbuffer_device_aliases (mem);
+  if (errcode != CL_SUCCESS)
+    goto ERROR;
+  if (parent->mem_host_ptr != NULL)
+    mem->mem_host_ptr = (char *)parent->mem_host_ptr + info->origin;
+
+  POCL_UNLOCK_OBJ (parent);
+  parent_locked = 0;
+
+  POCL_MSG_PRINT_MEMORY ("Created sub-buffer %zu (%p) with size %zu, origin "
+                         "%zu and parent %zu (%p)\n",
+                         mem->id, mem, info->size, info->origin,
+                         mem->parent->id, mem->parent);
+
+  if (errcode_ret != NULL)
+    *errcode_ret = CL_SUCCESS;
+  return mem;
+
+ERROR:
+  if (parent_locked)
+    {
+      LL_DELETE (parent->sub_buffers, sub_buf);
+      POCL_UNLOCK_OBJ (parent);
+    }
+  destroy_partial_subbuffer (mem);
+  POCL_MEM_FREE (sub_buf);
+  if (references_retained)
+    {
+      cl_context context = parent->context;
+      POname (clReleaseMemObject) (parent);
+      POname (clReleaseContext) (context);
+    }
+  if (errcode_ret)
+    {
+      *errcode_ret = errcode;
+    }
+  return NULL;
+}
+CL_API_ENTRY cl_mem CL_API_CALL
+POname (clCreateSubBuffer) (cl_mem parent, cl_mem_flags flags,
+                            cl_buffer_create_type buffer_create_type,
+                            const void *buffer_create_info,
+                            cl_int *errcode_ret) CL_API_SUFFIX__VERSION_1_1
+{
+  const subbuffer_request request
+      = { flags, buffer_create_type, buffer_create_info };
+  cl_int status = validate_subbuffer_parent (parent, &request);
+  if (status == CL_SUCCESS)
+    {
+      const subbuffer_description description
+          = parse_subbuffer_description (parent, &request);
+      status = description.status;
+      if (status == CL_SUCCESS)
+        return create_subbuffer_object (parent, &description, errcode_ret);
+    }
+  if (errcode_ret != NULL)
+    *errcode_ret = status;
   return NULL;
 }
 POsym (clCreateSubBuffer)

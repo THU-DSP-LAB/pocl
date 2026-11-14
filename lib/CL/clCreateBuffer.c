@@ -148,6 +148,7 @@ pocl_create_memobject (cl_context context,
   POCL_GOTO_ERROR_COND ((mem == NULL), CL_OUT_OF_HOST_MEMORY);
 
   POCL_INIT_OBJECT (mem, context);
+  POCL_INIT_LOCK (mem->migration_lock);
   mem->type = type;
   mem->flags = flags;
   if (device_image_support)
@@ -310,6 +311,7 @@ ERROR:
     if (((flags & CL_MEM_USE_HOST_PTR) == 0) && mem->mem_host_ptr)
       POCL_MEM_FREE (mem->mem_host_ptr);
 
+    POCL_DESTROY_LOCK (mem->migration_lock);
     POCL_MEM_FREE (mem);
   }
 

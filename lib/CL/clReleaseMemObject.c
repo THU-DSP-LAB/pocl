@@ -46,6 +46,7 @@ release_implicit_sub_buffers (cl_mem memobj)
         POname (clReleaseEvent) (sub_buffer->mem->last_updater);
       LL_DELETE (memobj->implicit_sub_buffers, sub_buffer);
       POCL_MEM_FREE (sub_buffer->mem->device_ptrs);
+      POCL_DESTROY_OBJECT (sub_buffer->mem);
       POCL_MEM_FREE (sub_buffer->mem);
       POCL_MEM_FREE (sub_buffer);
     }
@@ -62,6 +63,7 @@ release_root_mem_data (cl_mem memobj)
 
   pocl_release_mem_device_resources (memobj);
   release_implicit_sub_buffers (memobj);
+  POCL_DESTROY_LOCK (memobj->migration_lock);
   if (memobj->mem_host_ptr == NULL)
     return;
   if (memobj->flags & CL_MEM_USE_HOST_PTR)
@@ -201,8 +203,12 @@ POname(clReleaseMemObject)(cl_mem memobj) CL_API_SUFFIX__VERSION_1_0
 
   if (new_refcount != 0)
     {
+      cl_mem retained_root = POCL_ATOMIC_LOAD (memobj->implicit_sub_buffer)
+                                 ? memobj->parent : NULL;
       VG_REFC_NONZERO (memobj);
       POCL_UNLOCK_OBJ (memobj);
+      if (retained_root != NULL)
+        POname (clReleaseMemObject) (retained_root);
       return CL_SUCCESS;
     }
 

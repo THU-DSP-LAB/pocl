@@ -65,6 +65,8 @@
 #include "pocl_llvm.h"
 #include "pocl_local_size.h"
 #include "pocl_mem_management.h"
+#include "pocl_buffer_aliases.h"
+#include "pocl_migration_queues.h"
 #include "pocl_runtime_config.h"
 #include "pocl_shared.h"
 #include "pocl_timing.h"
@@ -568,21 +570,33 @@ pocl_create_command_full (_cl_command_node **cmd,
 
       if (!pocl_preallocate_buffers (dev, buffer_usage))
         return CL_OUT_OF_RESOURCES;
+      err = pocl_prepare_migration_queues (command_queue);
+      if (err != CL_SUCCESS)
+        return err;
     }
 
-  /* Waitlist here only contains the user-provided events.
-     Migration events are added to the waitlist later. */
+  pocl_buffer_migration_info *actual_buffers = buffer_usage;
+  pocl_buffer_migration_info *locked_roots
+      = pocl_lock_buffer_roots (actual_buffers, &err);
+  if (err)
+    return err;
+  buffer_usage = pocl_buffer_alias_migrations (actual_buffers, &err);
+  if (err)
+    {
+      pocl_unlock_buffer_roots (locked_roots);
+      return err;
+    }
+
+  /* Keep the caller's original buffer list intact for error cleanup. */
   err = pocl_create_command_struct (cmd, command_queue, command_type, event_p,
-                                    num_events, wait_list, buffer_usage);
-
+                                    num_events, wait_list, actual_buffers);
   if (err)
-    return err;
-
-  buffer_usage = pocl_convert_to_subbuffer_migrations (buffer_usage, &err);
-
-  if (err)
-    return err;
-
+    {
+      pocl_discard_alias_migrations (buffer_usage);
+      pocl_unlock_buffer_roots (locked_roots);
+      return err;
+    }
+  pocl_retain_actual_buffers (actual_buffers, buffer_usage);
   (*cmd)->migr_infos = buffer_usage;
 
   /* The event (command) that will be set as the destination to all the
@@ -700,28 +714,14 @@ pocl_create_command_full (_cl_command_node **cmd,
         &mi->buffer->device_ptrs[dev->global_mem_id], mi->read_only,
         command_type, mig_flags, migration_size, &prev_migr_event);
 
-      /* Hold the last updater events of the parent buffers so we can refer
-         to the event in potential implicit sub-buffer migrations. */
-      if (mi->buffer->parent == NULL && mi->buffer->sub_buffers != NULL
-          && mi->buffer->last_updater != NULL)
-        POname (clRetainEvent) (mi->buffer->last_updater);
       ++i;
     }
-
-    LL_FOREACH (buffer_usage, mi)
-      {
-        /* The last events of the parent buffers can be now released as the
-           sub-buffer references to the events should hold them alive. */
-        if (mi->buffer->parent == NULL && mi->buffer->sub_buffers != NULL
-            && mi->buffer->last_updater != NULL)
-          {
-            POname (clReleaseEvent) (mi->buffer->last_updater);
-            mi->buffer->last_updater = NULL;
-          }
-      }
-    if (prev_migr_event != NULL)
-      POname (clReleaseEvent) (prev_migr_event);
-    return err;
+  (*cmd)->migr_infos
+      = pocl_merge_actual_buffers (actual_buffers, buffer_usage);
+  (*cmd)->locked_buffer_roots = locked_roots;
+  if (prev_migr_event != NULL)
+    POname (clReleaseEvent) (prev_migr_event);
+  return err;
 }
 
 cl_int
@@ -809,6 +809,9 @@ void pocl_command_enqueue (cl_command_queue command_queue,
                          node->sync.event.event->id, command_queue->id);
   command_queue->last_event.event = node->sync.event.event;
   POCL_UNLOCK_OBJ (command_queue);
+  /* Publish the actual in-order position before another enqueue may plan
+   * migrations/version updates for any of this command's buffer roots. */
+  pocl_release_command_buffer_locks (node);
 
   POCL_LOCK_OBJ (node->sync.event.event);
   assert (node->sync.event.event->status == CL_QUEUED);
@@ -839,7 +842,8 @@ pocl_release_mem_host_ptr (cl_mem mem)
 {
   assert (mem->mem_host_ptr_refcount > 0);
   --mem->mem_host_ptr_refcount;
-  if (mem->mem_host_ptr_refcount == 0 && mem->mem_host_ptr != NULL)
+  if (mem->mem_host_ptr_refcount == 0 && mem->mem_host_ptr != NULL
+      && !POCL_ATOMIC_LOAD (mem->implicit_sub_buffer))
     {
       pocl_aligned_free (mem->mem_host_ptr);
       mem->mem_host_ptr = NULL;

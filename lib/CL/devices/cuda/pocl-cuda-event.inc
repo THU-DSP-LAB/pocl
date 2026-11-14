@@ -4,7 +4,7 @@ pocl_cuda_submit (_cl_command_node *node, cl_command_queue cq)
   /* Allocate CUDA event data */
   pocl_cuda_event_data_t *p
       = (pocl_cuda_event_data_t *)calloc (1, sizeof (pocl_cuda_event_data_t));
-  node->sync.event.event->data = p;
+  POCL_ATOMIC_STORE (node->sync.event.event->data, p);
   pocl_cuda_queue_data_t *queue_data = (pocl_cuda_queue_data_t *)cq->data;
   p->use_threads = queue_data->use_threads;
 
@@ -30,19 +30,21 @@ pocl_cuda_submit (_cl_command_node *node, cl_command_queue cq)
 void
 pocl_cuda_notify (cl_device_id device, cl_event event, cl_event finished)
 {
-  /* Ignore CUDA device events, we've already handled these dependencies */
-  if (finished->queue && finished->queue->device->ops == device->ops)
+  pocl_cuda_event_data_t *data = (pocl_cuda_event_data_t *)event->data;
+  if (data == NULL || data->host_wait_events == NULL)
     return;
-
-  pocl_cuda_event_data_t *event_data = (pocl_cuda_event_data_t *)event->data;
-  /* A dependency can finish before the CUDA submit callback has initialized
-   * or counted it. In that case pocl_broadcast removes it from the wait list,
-   * so the submit thread will never include it in num_ext_events. */
-  if (event_data == NULL || event_data->num_ext_events == 0)
-    return;
-
-  if (--event_data->num_ext_events == 0)
-    PTHREAD_CHECK (pthread_cond_broadcast (&event_data->event_cond));
+  /* Called with event locked. The submit thread's dependency snapshot stays
+   * live until all registered notifications have arrived, including failures. */
+  for (unsigned i = 0; i < data->host_wait_slots; ++i)
+    {
+      if (data->host_wait_events[i] != finished)
+        continue;
+      data->host_wait_events[i] = NULL;
+      assert (data->num_ext_events > 0);
+      if (--data->num_ext_events == 0)
+        PTHREAD_CHECK (pthread_cond_broadcast (&data->event_cond));
+      break;
+    }
 }
 
 void
