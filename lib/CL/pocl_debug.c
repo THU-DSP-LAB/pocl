@@ -45,9 +45,16 @@ static pocl_lock_t console_mutex;
 static pocl_lock_t pocl_tg_dump_lock;
 static pocl_cond_t pocl_tg_dump_cond;
 
-void pocl_debug_output_lock(void) { POCL_LOCK(console_mutex); }
+void pocl_debug_output_lock(void) {
+  POCL_LOCK(console_mutex);
+  /* Keep header and payload together with other same-FILE stdio writers. */
+  flockfile(stderr);
+}
 
-void pocl_debug_output_unlock(void) { POCL_UNLOCK(console_mutex); }
+void pocl_debug_output_unlock(void) {
+  funlockfile(stderr);
+  POCL_UNLOCK(console_mutex);
+}
 
 void pocl_debug_messages_setup(const char *debug) {
 
