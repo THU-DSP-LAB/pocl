@@ -138,13 +138,7 @@ typedef struct
 void pocl_cuda_svm_copy_async (CUstream, void *restrict, const void *restrict,
                                size_t);
 
-typedef struct pocl_cuda_kernel_data_s
-{
-  CUfunction kernel;
-  CUfunction kernel_offsets;
-  size_t *alignments;
-  size_t refcount;
-} pocl_cuda_kernel_data_t;
+#include "pocl-cuda-kernel-data.h"
 
 typedef struct pocl_cuda_program_data_s
 {
@@ -198,11 +192,17 @@ extern uint64_t pocl_num_devices;
 
 /* Keep the legacy CUDA driver in one translation unit while separating
    implementation responsibilities into reviewable source fragments. */
+#include "pocl-cuda-local-layout.h"
+#include "pocl-cuda-launch-types.h"
+
 #include "pocl-cuda-target.inc"
 #include "pocl-cuda-device.inc"
 #include "pocl-cuda-memory.inc"
 #include "pocl-cuda-transfer.inc"
+#include "pocl-cuda-resources.inc"
+#include "pocl-cuda-local-query.inc"
 #include "pocl-cuda-program.inc"
+#include "pocl-cuda-kernel-metadata.inc"
 #include "pocl-cuda-kernel.inc"
 #include "pocl-cuda-submit.inc"
 #include "pocl-cuda-event.inc"

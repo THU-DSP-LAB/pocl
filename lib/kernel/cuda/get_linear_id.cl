@@ -21,33 +21,24 @@
    IN THE SOFTWARE.
 */
 
-uint get_nvvm_nctaid_x();
-uint get_nvvm_nctaid_y();
-uint get_nvvm_nctaid_z();
-
 uint get_nvvm_ntid_x();
 uint get_nvvm_ntid_y();
-uint get_nvvm_ntid_z();
-
-uint get_nvvm_ctaid_x();
-uint get_nvvm_ctaid_y();
-uint get_nvvm_ctaid_z();
-
 uint get_nvvm_tid_x();
 uint get_nvvm_tid_y();
 uint get_nvvm_tid_z();
 
+size_t _CL_OVERLOADABLE get_global_id(unsigned int dimindx);
+size_t _CL_OVERLOADABLE get_global_size(unsigned int dimindx);
+size_t _CL_OVERLOADABLE get_global_offset(unsigned int dimindx);
 
 size_t _CL_OVERLOADABLE _CL_READNONE
 get_global_linear_id ()
 {
-  return ((get_nvvm_ntid_z() * get_nvvm_ctaid_z() + get_nvvm_tid_z())
-          * get_nvvm_ntid_y() * get_nvvm_nctaid_y() * get_nvvm_ntid_x() * get_nvvm_nctaid_x())
-
-         + ((get_nvvm_ntid_y() * get_nvvm_ctaid_y() + get_nvvm_tid_y())
-            * get_nvvm_ntid_x() * get_nvvm_nctaid_x())
-
-         + (get_nvvm_ntid_x() * get_nvvm_ctaid_x() + get_nvvm_tid_x());
+  const size_t x = get_global_id(0) - get_global_offset(0);
+  const size_t y = get_global_id(1) - get_global_offset(1);
+  const size_t z = get_global_id(2) - get_global_offset(2);
+  // A CUDA region may cover only one tail shape of the logical NDRange.
+  return x + get_global_size(0) * (y + get_global_size(1) * z);
 }
 
 size_t _CL_OVERLOADABLE _CL_READNONE

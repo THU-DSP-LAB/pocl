@@ -2290,6 +2290,8 @@ if(ENABLE_CUDA)
       cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics \
       cl_khr_local_int32_extended_atomics cl_nv_device_attribute_query")
     set(CUDA_DEVICE_FEATURES_30 "__opencl_c_int64")
+    set(CUDA_DEVICE_FEATURES_30
+      "${CUDA_DEVICE_FEATURES_30} __opencl_c_work_group_collective_functions")
   else()
     # CUDA device: list of extensions that are always enabled, for both OpenCL 1.2 and 3.0
     # NOTE: update README.md when changing the list

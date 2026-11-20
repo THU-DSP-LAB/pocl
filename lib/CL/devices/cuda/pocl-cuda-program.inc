@@ -55,6 +55,8 @@ pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
   ddata->cuda_builtin_kernels_data[0].kernel_offsets = ff; // TODO fix this
   ddata->cuda_builtin_kernels_data[0].alignments
       = cuda_builtin_kernel_zero_alignments;
+  ddata->cuda_builtin_kernels_data[0].alignment_capacity
+      = sizeof (cuda_builtin_kernel_zero_alignments) / sizeof (cuda_builtin_kernel_zero_alignments[0]);
   ddata->cuda_builtin_kernels_data[0].refcount = 1;
 
   res = cuModuleGetFunction (&ff, mod, "pocl_add_i32");
@@ -64,6 +66,8 @@ pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
   ddata->cuda_builtin_kernels_data[1].kernel_offsets = ff; // TODO fix this
   ddata->cuda_builtin_kernels_data[1].alignments
       = cuda_builtin_kernel_zero_alignments;
+  ddata->cuda_builtin_kernels_data[1].alignment_capacity
+      = sizeof (cuda_builtin_kernel_zero_alignments) / sizeof (cuda_builtin_kernel_zero_alignments[0]);
   ddata->cuda_builtin_kernels_data[1].refcount = 1;
 
   res = cuModuleGetFunction (&ff, mod, "pocl_dnn_conv2d_int8_relu");
@@ -73,6 +77,8 @@ pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
   ddata->cuda_builtin_kernels_data[2].kernel_offsets = ff; // TODO fix this
   ddata->cuda_builtin_kernels_data[2].alignments
       = cuda_builtin_kernel_zero_alignments;
+  ddata->cuda_builtin_kernels_data[2].alignment_capacity
+      = sizeof (cuda_builtin_kernel_zero_alignments) / sizeof (cuda_builtin_kernel_zero_alignments[0]);
   ddata->cuda_builtin_kernels_data[2].refcount = 1;
 
   res = cuModuleGetFunction (&ff, mod, "pocl_sgemm_local_f32");
@@ -83,6 +89,8 @@ pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
   // 3 pointers, 3 unsigned
   static size_t sgemm_local_alignments[] = {0, 0, 0, 4, 4, 4,};
   ddata->cuda_builtin_kernels_data[3].alignments = sgemm_local_alignments;
+  ddata->cuda_builtin_kernels_data[3].alignment_capacity
+      = sizeof (sgemm_local_alignments) / sizeof (sgemm_local_alignments[0]);
   ddata->cuda_builtin_kernels_data[3].refcount = 1;
 
   if (have_sm70)
@@ -96,7 +104,9 @@ pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
     // 3 pointers, 3 unsigned
     static size_t sgemm_tensor_alignments[] = { 0, 0, 0, 4, 4, 4 };
     ddata->cuda_builtin_kernels_data[4].alignments = sgemm_tensor_alignments;
-    ddata->cuda_builtin_kernels_data[4].refcount = 1;
+    ddata->cuda_builtin_kernels_data[4].alignment_capacity
+      = sizeof (sgemm_tensor_alignments) / sizeof (sgemm_tensor_alignments[0]);
+  ddata->cuda_builtin_kernels_data[4].refcount = 1;
 
     res = cuModuleGetFunction (&ff, mod, "pocl_sgemm_scale_tensor_f16f16f32");
     if (CUDA_CHECK_ERROR (
@@ -108,7 +118,9 @@ pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
     static size_t sgemm_tensor_scale_alignments[] = { 0, 0, 0, 4, 4, 4, 4, 4 };
     ddata->cuda_builtin_kernels_data[5].alignments
         = sgemm_tensor_scale_alignments;
-    ddata->cuda_builtin_kernels_data[5].refcount = 1;
+    ddata->cuda_builtin_kernels_data[5].alignment_capacity
+      = sizeof (sgemm_tensor_scale_alignments) / sizeof (sgemm_tensor_scale_alignments[0]);
+  ddata->cuda_builtin_kernels_data[5].refcount = 1;
   }
   ddata->cuda_builtin_kernels_built = CL_TRUE;
   return 0;
@@ -225,21 +237,35 @@ pocl_cuda_build_ptx (void *llvm_ir, cl_program prog, char *out_ptx, CUmodule *ou
   return CL_SUCCESS;
 }
 
-int
-pocl_cuda_post_build_program (cl_program program, cl_uint device_i)
+static cl_int
+pocl_cuda_publish_program_data (cl_program program, unsigned device_i,
+                                const pocl_cuda_program_data_t *candidate)
 {
-  int result;
-  cl_device_id device = program->devices[device_i];
-  pocl_cuda_device_data_t *ddata = (pocl_cuda_device_data_t *)device->data;
-  cuCtxSetCurrent (ddata->context);
+  pocl_cuda_program_data_t *pdata = calloc (1, sizeof (*pdata));
+  if (!pdata)
+    return CL_OUT_OF_HOST_MEMORY;
+  const pocl_cuda_resource_api api = {
+    candidate->module_offsets, cuModuleGetFunction, cuFuncGetAttribute
+  };
+  cl_int result = pocl_cuda_refresh_local_sizes (program, device_i, &api);
+  if (result != CL_SUCCESS)
+    {
+      free (pdata);
+      return result;
+    }
+  *pdata = *candidate;
+  program->data[device_i] = pdata;
+  return CL_SUCCESS;
+}
 
-  POCL_LOCK (ddata->compile_lock);
+static cl_int
+pocl_cuda_post_build_locked (cl_program program, unsigned device_i,
+                             pocl_cuda_device_data_t *ddata)
+{
+  cl_device_id device = program->devices[device_i];
+  cl_int result;
   char program_bc[POCL_MAX_PATHNAME_LENGTH];
   pocl_cache_program_bc_path (program_bc, program, device_i);
-
-  char noofs_ptx_filename[POCL_MAX_PATHNAME_LENGTH];
-  strcpy (noofs_ptx_filename, program_bc);
-  strncat (noofs_ptx_filename, ".noOfs.ptx", POCL_MAX_PATHNAME_LENGTH - 1);
 
   char ofs_ptx_filename[POCL_MAX_PATHNAME_LENGTH];
   strcpy (ofs_ptx_filename, program_bc);
@@ -249,37 +275,49 @@ pocl_cuda_post_build_program (cl_program program, cl_uint device_i)
   size_t constant_mem_size = 0;
   void *align_map = NULL;
   CUdeviceptr constant_mem_base;
-  CUmodule noofs_module;
-  CUmodule ofs_module;
+  CUmodule ofs_module = NULL;
 
   assert (program->llvm_irs[device_i]);
   result = pocl_cuda_define_sub_group_size (
       program->llvm_irs[device_i], program, ddata->warp_size);
-  assert (result == CL_SUCCESS);
+  if (result != CL_SUCCESS)
+    goto ERROR_CLEANUP;
   result = pocl_llvm_run_passes_on_program (program, device_i);
-  assert (result == CL_SUCCESS);
-
-  /*
-    pocl_cuda_build_ptx(program_bc, noofs_ptx_filename, &noofs_module, device,
-    ddata, 0, &constant_mem_base, &constant_mem_size); pdata->module =
-    noofs_module; pdata->constant_mem_base = constant_mem_base;
-    pdata->constant_mem_size = constant_mem_size;
-  */
+  if (result != CL_SUCCESS)
+    goto ERROR_CLEANUP;
 
   result = pocl_cuda_build_ptx (
       program->llvm_irs[device_i], program, ofs_ptx_filename, &ofs_module, device,
       ddata, 1, &constant_mem_base, &constant_mem_size, &align_map);
-  if (result == CL_SUCCESS)
-    {
-      pocl_cuda_program_data_t *pdata = (pocl_cuda_program_data_t *)calloc (
-          1, sizeof (pocl_cuda_program_data_t));
-      POCL_RETURN_ERROR_COND ((pdata == NULL), CL_OUT_OF_HOST_MEMORY);
-      pdata->module_offsets = ofs_module;
-      pdata->constant_mem_base_offsets = constant_mem_base;
-      pdata->constant_mem_size_offsets = constant_mem_size;
-      pdata->align_map_offsets = align_map;
-      program->data[device_i] = pdata;
-    }
+  if (result != CL_SUCCESS)
+    goto ERROR_CLEANUP;
+  const pocl_cuda_program_data_t candidate = {
+    .module_offsets = ofs_module,
+    .constant_mem_base_offsets = constant_mem_base,
+    .constant_mem_size_offsets = constant_mem_size,
+    .align_map_offsets = align_map
+  };
+  result = pocl_cuda_publish_program_data (program, device_i, &candidate);
+  if (result != CL_SUCCESS)
+    goto ERROR_CLEANUP;
+  return result;
+ERROR_CLEANUP:
+  if (ofs_module != NULL)
+    CUDA_CHECK_ERROR (cuModuleUnload (ofs_module),
+                      "cuModuleUnload after program/resource failure");
+  pocl_cuda_destroy_alignments (program->llvm_irs[device_i], align_map);
+  return result;
+}
+
+int
+pocl_cuda_post_build_program (cl_program program, cl_uint device_i)
+{
+  cl_device_id device = program->devices[device_i];
+  pocl_cuda_device_data_t *ddata = device->data;
+  if (CUDA_CHECK_ERROR (cuCtxSetCurrent (ddata->context), "cuCtxSetCurrent"))
+    return CL_OUT_OF_RESOURCES;
+  POCL_LOCK (ddata->compile_lock);
+  cl_int result = pocl_cuda_post_build_locked (program, device_i, ddata);
   POCL_UNLOCK (ddata->compile_lock);
   return result;
 }
@@ -321,114 +359,5 @@ pocl_cuda_free_program (cl_device_id device, cl_program program,
       pdata->align_map_offsets = NULL;
     }
   POCL_MEM_FREE (program->data[device_i]);
-  return CL_SUCCESS;
-}
-
-int
-pocl_cuda_compile_kernel (_cl_command_node *cmd,
-                          cl_kernel kernel,
-                          cl_device_id device,
-                          int specialize)
-{
-  return CL_SUCCESS;
-}
-
-int
-pocl_cuda_create_kernel (cl_device_id device, cl_program program,
-                         cl_kernel kernel, unsigned device_i)
-{
-  CUresult result;
-  pocl_kernel_metadata_t *meta = kernel->meta;
-  pocl_cuda_program_data_t *pdata
-      = (pocl_cuda_program_data_t *)program->data[device_i];
-  assert (pdata != NULL);
-  pocl_cuda_kernel_data_t *kdata
-      = (pocl_cuda_kernel_data_t *)meta->data[device_i];
-  if (kdata != NULL)
-    {
-      ++kdata->refcount;
-      return CL_SUCCESS;
-    }
-
-  kdata = meta->data[device_i]
-      = (void *)calloc (1, sizeof (pocl_cuda_kernel_data_t));
-
-  /* Get kernel function */
-  CUfunction function = NULL;
-  /*
-    result = cuModuleGetFunction (&function, pdata->module, kernel->name);
-    CUDA_CHECK (result, "cuModuleGetFunction");
-    kdata->kernel = function;
-  */
-  assert (pdata->module_offsets);
-  result
-      = cuModuleGetFunction (&function, pdata->module_offsets, kernel->name);
-  if (result != CUDA_SUCCESS)
-    {
-      POCL_MSG_ERR ("pocl_cuda_create_kernel: cuModuleGetFunction() failed\n");
-      POCL_MEM_FREE (meta->data[device_i]);
-      return CL_OUT_OF_RESOURCES;
-    }
-
-  kdata->kernel_offsets = function;
-
-  int function_max_threads = 0;
-  result
-      = cuFuncGetAttribute (&function_max_threads,
-                            CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, function);
-  if (result != CUDA_SUCCESS || function_max_threads <= 0)
-    {
-      CUDA_CHECK_ERROR (result, "cuFuncGetAttribute(MAX_THREADS_PER_BLOCK)");
-      POCL_MSG_ERR (
-          "CUDA returned invalid max thread count %d for kernel %s\n",
-          function_max_threads, kernel->name);
-      POCL_MEM_FREE (meta->data[device_i]);
-      return CL_OUT_OF_RESOURCES;
-    }
-  if (meta->max_workgroup_size == NULL)
-    meta->max_workgroup_size
-        = calloc (program->associated_num_devices, sizeof (size_t));
-  if (meta->max_workgroup_size == NULL)
-    {
-      POCL_MEM_FREE (meta->data[device_i]);
-      return CL_OUT_OF_HOST_MEMORY;
-    }
-  size_t metadata_limit = meta->max_workgroup_size[device_i];
-  meta->max_workgroup_size[device_i]
-      = metadata_limit == 0
-            ? (size_t)function_max_threads
-            : min (metadata_limit, (size_t)function_max_threads);
-
-  /* Get pointer alignment */
-  /* Allocate space for args, locals, work dim and global_offset_{x|y|z} */
-  kdata->alignments
-      = calloc (meta->num_args + meta->num_locals + 4, sizeof (size_t));
-  const pocl_cuda_alignment_query_t alignment_query = {
-    .llvm_module = program->llvm_irs[device_i],
-    .kernel_name = kernel->name,
-    .alignments = kdata->alignments,
-    .alignment_map = pdata->align_map_offsets,
-  };
-  pocl_cuda_get_ptr_arg_alignment (&alignment_query);
-  ++kdata->refcount;
-  return CL_SUCCESS;
-}
-
-int
-pocl_cuda_free_kernel (cl_device_id device, cl_program program,
-                       cl_kernel kernel, unsigned device_i)
-{
-  pocl_kernel_metadata_t *meta = kernel->meta;
-  pocl_cuda_kernel_data_t *kdata
-      = (pocl_cuda_kernel_data_t *)meta->data[device_i];
-  if (kdata != NULL)
-    {
-      --kdata->refcount;
-      if (kdata->refcount == 0)
-        {
-          POCL_MEM_FREE (kdata);
-          meta->data[device_i] = NULL;
-        }
-    }
   return CL_SUCCESS;
 }

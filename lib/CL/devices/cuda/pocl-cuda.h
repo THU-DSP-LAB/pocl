@@ -30,4 +30,7 @@
 #include "prototypes.inc"
 GEN_PROTOTYPES (cuda)
 
+cl_int pocl_cuda_get_kernel_local_mem_size (cl_kernel kernel, unsigned device_i,
+                                            cl_ulong *size);
+
 #endif /* POCL_CUDA_H */

@@ -98,21 +98,36 @@ void pocl_cuda_destroy_alignments(void *LLVMModule, void *AlignmentMapPtr) {
   delete static_cast<pocl::cuda::AlignmentMap *>(AlignmentMapPtr);
 }
 
+static int missingKernelAlignment(const char *name) {
+  POCL_MSG_ERR("CUDA alignment map has no kernel named %s\n", name);
+  return 1;
+}
+
+static int mismatchedKernelAlignment(const pocl_cuda_alignment_query_t *query,
+                                      size_t actual) {
+  POCL_MSG_ERR("CUDA kernel %s has %zu ABI args, metadata expects %zu\n",
+               query->kernel_name, actual, query->num_alignments);
+  return 1;
+}
+
 int pocl_cuda_get_ptr_arg_alignment(const pocl_cuda_alignment_query_t *Query) {
   if (!Query)
     return 1;
 
   auto *Map = static_cast<pocl::cuda::AlignmentMap *>(Query->alignment_map);
-  if (!Map || !Query->kernel_name || !Query->alignments)
+  if (!Map || !Query->kernel_name)
     return 1;
 
   auto Entry = Map->find(Query->kernel_name);
-  if (Entry == Map->end()) {
-    POCL_MSG_ERR("CUDA alignment map has no kernel named %s\n",
-                 Query->kernel_name);
-    return 1;
-  }
+  if (Entry == Map->end())
+    return missingKernelAlignment(Query->kernel_name);
   const std::vector<size_t> &Values = Entry->second;
+  if (Values.size() != Query->num_alignments)
+    return mismatchedKernelAlignment(Query, Values.size());
+  if (Values.empty())
+    return 0;
+  if (!Query->alignments)
+    return 1;
   std::memcpy(Query->alignments, Values.data(), sizeof(size_t) * Values.size());
   return 0;
 }

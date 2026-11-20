@@ -50,8 +50,17 @@ set(CUDA_DRIVER_FRAGMENTS
   pocl-cuda-device.inc
   pocl-cuda-event.inc
   pocl-cuda-kernel.inc
+  pocl-cuda-launch-types.h
+  pocl-cuda-launch-selection.inc
+  pocl-cuda-launch-arguments.inc
+  pocl-cuda-launch-dispatch.inc
   pocl-cuda-memory.inc
   pocl-cuda-program.inc
+  pocl-cuda-kernel-metadata.inc
+  pocl-cuda-resources.inc
+  pocl-cuda-local-query.inc
+  pocl-cuda-local-layout.h
+  pocl-cuda-kernel-data.h
   pocl-cuda-submit.inc
   pocl-cuda-svm.inc
   pocl-cuda-target.inc
@@ -89,6 +98,14 @@ if(ENABLE_LOADABLE_DRIVERS)
 endif()
 
 if(ENABLE_TESTS)
+  add_executable(test_cuda_local_layout test-cuda-local-layout.c)
+  add_test(NAME unit/test_cuda_local_layout COMMAND test_cuda_local_layout)
+  set_tests_properties(unit/test_cuda_local_layout
+    PROPERTIES LABELS "cuda;offline" TIMEOUT 60)
+  add_executable(test_cuda_resources test-cuda-resources.c)
+  add_test(NAME unit/test_cuda_resources COMMAND test_cuda_resources)
+  set_tests_properties(unit/test_cuda_resources
+    PROPERTIES LABELS "cuda;offline" TIMEOUT 60)
   add_executable(test_cuda_rotate
     test-ptx-rotate.cc
     pocl-ptx-rotate.cc)

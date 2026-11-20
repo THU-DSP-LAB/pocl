@@ -62,6 +62,7 @@ typedef struct {
   const char *kernel_name;
   size_t *alignments;
   void *alignment_map;
+  size_t num_alignments;
 } pocl_cuda_alignment_query_t;
 
 /* Populate the alignment array with each kernel argument's requirements. */

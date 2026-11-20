@@ -45,7 +45,10 @@ get_total_local_size ()
         sizeof (TYPE), ALIGN_ELEMENT_MULTIPLE * sizeof (TYPE), 0);            \
     temp_storage[get_local_linear_id ()] = val;                               \
     work_group_barrier (CLK_LOCAL_MEM_FENCE);                                 \
-    return temp_storage[id % get_total_local_size ()];                        \
+    TYPE result = temp_storage[id % get_total_local_size ()];                \
+    /* All readers finish before another collective reuses this scratch. */ \
+    work_group_barrier (CLK_LOCAL_MEM_FENCE);                                 \
+    return result;                                                           \
   }
 
 /* Define both the non-prefixed (khr) and Intel-prefixed shuffles. */
@@ -111,7 +114,9 @@ WORK_GROUP_BROADCAST_T (double)
           }                                                                   \
       }                                                                       \
     work_group_barrier (CLK_LOCAL_MEM_FENCE);                                 \
-    return temp_storage[0];                                                   \
+    TYPE result = temp_storage[0];                                           \
+    work_group_barrier (CLK_LOCAL_MEM_FENCE);                                 \
+    return result;                                                           \
   }
 
 #ifdef cl_khr_fp64
@@ -152,7 +157,9 @@ WORK_GROUP_REDUCE_T (max, a > b ? a : b)
           }                                                                   \
       }                                                                       \
     work_group_barrier (CLK_LOCAL_MEM_FENCE);                                 \
-    return data[get_local_linear_id ()];                                      \
+    TYPE result = data[get_local_linear_id ()];                               \
+    work_group_barrier (CLK_LOCAL_MEM_FENCE);                                 \
+    return result;                                                           \
   }
 
 #ifdef cl_khr_fp64
@@ -184,10 +191,10 @@ WORK_GROUP_SCAN_INCLUSIVE_T (max, a > b ? a : b)
         sizeof (TYPE), ALIGN_ELEMENT_MULTIPLE * sizeof (TYPE),                \
         sizeof (TYPE));                                                       \
     data[get_local_linear_id () + 1] = val;                                   \
-    data[0] = ID;                                                             \
     work_group_barrier (CLK_LOCAL_MEM_FENCE);                                 \
     if (get_local_linear_id () == 0)                                          \
       {                                                                       \
+        data[0] = ID;                                                         \
         for (uint i = 1; i < get_total_local_size (); ++i)                    \
           {                                                                   \
             TYPE a = data[i - 1], b = data[i];                                \
@@ -195,7 +202,9 @@ WORK_GROUP_SCAN_INCLUSIVE_T (max, a > b ? a : b)
           }                                                                   \
       }                                                                       \
     work_group_barrier (CLK_LOCAL_MEM_FENCE);                                 \
-    return data[get_local_linear_id ()];                                      \
+    TYPE result = data[get_local_linear_id ()];                               \
+    work_group_barrier (CLK_LOCAL_MEM_FENCE);                                 \
+    return result;                                                           \
   }
 
 WORK_GROUP_SCAN_EXCLUSIVE_OT (add, a + b, int, 0)
@@ -238,7 +247,9 @@ work_group_any (int predicate)
       flags[0] = result;
     }
   work_group_barrier (CLK_LOCAL_MEM_FENCE);
-  return flags[0] > 0;
+  int result = flags[0] > 0;
+  work_group_barrier (CLK_LOCAL_MEM_FENCE);
+  return result;
 }
 
 __attribute__ ((always_inline)) int _CL_OVERLOADABLE
@@ -257,5 +268,7 @@ work_group_all (int predicate)
         flags[0] = result;
     }
     work_group_barrier (CLK_LOCAL_MEM_FENCE);
-    return flags[0] == get_total_local_size ();
+    int result = flags[0] == get_total_local_size ();
+    work_group_barrier (CLK_LOCAL_MEM_FENCE);
+    return result;
 }

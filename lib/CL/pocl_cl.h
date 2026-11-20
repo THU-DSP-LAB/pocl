@@ -1067,6 +1067,10 @@ struct pocl_device_ops {
   cl_int (*free_command_buffer) (cl_device_id device,
                                  cl_command_buffer_khr command_buffer);
 
+  /** Optional backend resource query using the same layout as its launch ABI. */
+  cl_int (*get_kernel_local_mem_size) (cl_kernel kernel, unsigned device_i,
+                                      cl_ulong *size);
+
 };
 
 typedef struct pocl_global_mem_t {

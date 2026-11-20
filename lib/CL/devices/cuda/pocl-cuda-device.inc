@@ -1,9 +1,3 @@
-enum
-{
-  POCL_CUDA_KERNEL_PARAMETER_BYTES = 4352,
-  POCL_CUDA_IMPLICIT_PARAMETER_COUNT = 16,
-};
-
 void
 pocl_cuda_init_device_ops (struct pocl_device_ops *ops)
 {
@@ -49,6 +43,7 @@ pocl_cuda_init_device_ops (struct pocl_device_ops *ops)
 
   ops->compile_kernel = pocl_cuda_compile_kernel;
   ops->create_kernel = pocl_cuda_create_kernel;
+  ops->get_kernel_local_mem_size = pocl_cuda_get_kernel_local_mem_size;
   ops->free_kernel = pocl_cuda_free_kernel;
 
   // TODO
@@ -395,7 +390,7 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
                                    | CL_DEVICE_ATOMIC_SCOPE_WORK_GROUP;
   dev->sub_group_independent_forward_progress = CL_FALSE;
   dev->max_num_sub_groups = 0;
-  dev->wg_collective_func_support = CL_FALSE;
+  dev->wg_collective_func_support = CL_TRUE;
 #else
   dev->atomic_memory_capabilities
       = CL_DEVICE_ATOMIC_ORDER_RELAXED | CL_DEVICE_ATOMIC_ORDER_ACQ_REL
