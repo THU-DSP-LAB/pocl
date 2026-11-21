@@ -164,8 +164,47 @@ test_invalid_metadata_and_overflow (void)
   pocl_kernel_metadata_t meta = { .name = "invalid", .local_mem_size = &local };
   struct _cl_program program = { .num_kernels = 1, .kernel_meta = &meta };
   meta.local_mem_size = NULL;
-  require (pocl_cuda_refresh_local_sizes (&program, 0, &api) == CL_OUT_OF_HOST_MEMORY,
-           "missing per-device metadata allocation accepted");
+  require (pocl_cuda_refresh_local_sizes (&program, 0, &api) == CL_INVALID_PROGRAM,
+           "missing associated devices accepted");
+}
+
+static void
+test_binary_zero_metadata_slots (void)
+{
+  const Fixture records[] = { { "zero", 0, CUDA_SUCCESS, CUDA_SUCCESS }, { 0 } };
+  const pocl_cuda_resource_api api = fixture_api (records);
+  pocl_kernel_metadata_t meta = { .name = "zero", .local_mem_size = NULL };
+  struct _cl_program program = {
+    .num_kernels = 1, .kernel_meta = &meta, .associated_num_devices = 2
+  };
+  require (pocl_cuda_refresh_local_sizes (&program, 0, &api) == CL_SUCCESS,
+           "valid zero-resource binary metadata rejected");
+  require (meta.local_mem_size != NULL && meta.local_mem_size[0] == 0
+               && meta.local_mem_size[1] == 0,
+           "binary resource storage missing or another device contaminated");
+  free (meta.local_mem_size);
+}
+
+static void *
+reject_allocation (size_t count, size_t size)
+{
+  (void)count;
+  (void)size;
+  return NULL;
+}
+
+static void
+test_binary_storage_allocation_failure (void)
+{
+  pocl_kernel_metadata_t meta = { .name = "zero", .local_mem_size = NULL };
+  struct _cl_program program = {
+    .num_kernels = 1, .kernel_meta = &meta, .associated_num_devices = 2
+  };
+  require (pocl_cuda_ensure_local_storage (&program, reject_allocation)
+               == CL_OUT_OF_HOST_MEMORY,
+           "real allocation failure silently accepted");
+  require (meta.local_mem_size == NULL,
+           "failed allocation published invalid storage");
 }
 
 int
@@ -176,6 +215,8 @@ main (void)
   test_transactional_errors ();
   test_zero_rebuild_and_device_slots ();
   test_invalid_metadata_and_overflow ();
-  puts ("CUDA local resource host contracts: 5 groups passed (fixture callbacks only)");
+  test_binary_zero_metadata_slots ();
+  test_binary_storage_allocation_failure ();
+  puts ("CUDA local resource host contracts: 7 groups passed (fixture callbacks only)");
   return 0;
 }

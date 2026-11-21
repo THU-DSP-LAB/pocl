@@ -31,6 +31,27 @@ pocl_cuda_read_kernel_local_size (const pocl_kernel_metadata_t *meta,
   return CL_SUCCESS;
 }
 
+/* Binary metadata may omit the work-group block when every resource is zero.
+ * Allocate device slots before publishing fresh Driver resource values. */
+static cl_int
+pocl_cuda_ensure_local_storage (cl_program program,
+                                void *(*allocate) (size_t, size_t))
+{
+  for (unsigned i = 0; i < program->num_kernels; ++i)
+    {
+      pocl_kernel_metadata_t *meta = &program->kernel_meta[i];
+      if (meta->local_mem_size != NULL)
+        continue;
+      if (program->associated_num_devices == 0)
+        return CL_INVALID_PROGRAM;
+      meta->local_mem_size = allocate (program->associated_num_devices,
+                                     sizeof (cl_ulong));
+      if (meta->local_mem_size == NULL)
+        return CL_OUT_OF_HOST_MEMORY;
+    }
+  return CL_SUCCESS;
+}
+
 static cl_int
 pocl_cuda_refresh_local_sizes (cl_program program, unsigned device_i,
                                const pocl_cuda_resource_api *api)
@@ -41,16 +62,13 @@ pocl_cuda_refresh_local_sizes (cl_program program, unsigned device_i,
   cl_int result = CL_SUCCESS;
   for (unsigned i = 0; i < program->num_kernels; ++i)
     {
-      if (program->kernel_meta[i].local_mem_size == NULL)
-        {
-          result = CL_OUT_OF_HOST_MEMORY;
-          break;
-        }
       result = pocl_cuda_read_kernel_local_size (&program->kernel_meta[i], api,
                                                  &sizes[i]);
       if (result != CL_SUCCESS)
         break;
     }
+  if (result == CL_SUCCESS)
+    result = pocl_cuda_ensure_local_storage (program, calloc);
   /* Commit once, only after every normal Driver query succeeds. Rebuilding or
    * recreating a kernel never accumulates an earlier static resource value. */
   if (result == CL_SUCCESS)
