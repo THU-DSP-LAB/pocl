@@ -214,6 +214,10 @@ SUBGROUP_SHUFFLE_XOR_2xI32 (double);
   }
 
 #define SUB_GROUP_REDUCE_T(OPNAME, OPERATION)                                 \
+  SUB_GROUP_REDUCE_OT (OPNAME, OPERATION, char)                              \
+  SUB_GROUP_REDUCE_OT (OPNAME, OPERATION, uchar)                             \
+  SUB_GROUP_REDUCE_OT (OPNAME, OPERATION, short)                             \
+  SUB_GROUP_REDUCE_OT (OPNAME, OPERATION, ushort)                            \
   SUB_GROUP_REDUCE_OT (OPNAME, OPERATION, int)                                \
   SUB_GROUP_REDUCE_OT (OPNAME, OPERATION, uint)                               \
   SUB_GROUP_REDUCE_OT (OPNAME, OPERATION, long)                               \
@@ -225,3 +229,100 @@ SUBGROUP_SHUFFLE_XOR_2xI32 (double);
 SUB_GROUP_REDUCE_T (_add, (a + b))
 SUB_GROUP_REDUCE_T (_min, (a > b ? b : a))
 SUB_GROUP_REDUCE_T (_max, (a > b ? a : b))
+
+#define SUBGROUP_SHUFFLE_RELATIVE(TYPE)                                      \
+  TYPE _CL_OVERLOADABLE sub_group_shuffle_up (TYPE value, uint delta)         \
+  {                                                                          \
+    return sub_group_shuffle (value, get_sub_group_local_id () - delta);       \
+  }                                                                          \
+                                                                             \
+  TYPE _CL_OVERLOADABLE sub_group_shuffle_down (TYPE value, uint delta)       \
+  {                                                                          \
+    return sub_group_shuffle (value, get_sub_group_local_id () + delta);       \
+  }
+
+SUBGROUP_SHUFFLE_RELATIVE (char)
+SUBGROUP_SHUFFLE_RELATIVE (uchar)
+SUBGROUP_SHUFFLE_RELATIVE (short)
+SUBGROUP_SHUFFLE_RELATIVE (ushort)
+SUBGROUP_SHUFFLE_RELATIVE (int)
+SUBGROUP_SHUFFLE_RELATIVE (uint)
+SUBGROUP_SHUFFLE_RELATIVE (long)
+SUBGROUP_SHUFFLE_RELATIVE (ulong)
+SUBGROUP_SHUFFLE_RELATIVE (float)
+__IF_FP16 (SUBGROUP_SHUFFLE_RELATIVE (half))
+__IF_FP64 (SUBGROUP_SHUFFLE_RELATIVE (double))
+#undef SUBGROUP_SHUFFLE_RELATIVE
+
+static uint
+rotation_source (int delta, uint cluster_size)
+{
+  const uint lane = get_sub_group_local_id ();
+  const uint cluster_mask = cluster_size - 1u;
+  return (lane & ~cluster_mask) | ((lane + (uint)delta) & cluster_mask);
+}
+
+#define SUB_GROUP_ROTATE(TYPE, SHUFFLE)                                      \
+  TYPE _CL_OVERLOADABLE                                                     \
+  sub_group_clustered_rotate (TYPE value, int delta, uint cluster_size)      \
+  {                                                                          \
+    return SHUFFLE (value, rotation_source (delta, cluster_size));           \
+  }                                                                          \
+  TYPE _CL_OVERLOADABLE sub_group_rotate (TYPE value, int delta)             \
+  {                                                                          \
+    return sub_group_clustered_rotate (value, delta, get_max_sub_group_size ()); \
+  }
+
+SUB_GROUP_ROTATE (char, sub_group_shuffle)
+SUB_GROUP_ROTATE (uchar, sub_group_shuffle)
+SUB_GROUP_ROTATE (short, sub_group_shuffle)
+SUB_GROUP_ROTATE (ushort, sub_group_shuffle)
+SUB_GROUP_ROTATE (int, sub_group_shuffle)
+SUB_GROUP_ROTATE (uint, sub_group_shuffle)
+SUB_GROUP_ROTATE (long, sub_group_shuffle)
+SUB_GROUP_ROTATE (ulong, sub_group_shuffle)
+SUB_GROUP_ROTATE (float, sub_group_shuffle)
+__IF_FP64 (SUB_GROUP_ROTATE (double, sub_group_shuffle))
+
+#define SHUFFLE_HALF_BITS(value, source)                                    \
+  as_half (sub_group_shuffle (as_ushort (value), source))
+__IF_FP16 (SUB_GROUP_ROTATE (half, SHUFFLE_HALF_BITS))
+
+
+int _CL_OVERLOADABLE
+sub_group_elect (void)
+{
+  return get_sub_group_local_id () == ctz (_pocl_sub_group_active_mask ());
+}
+
+int _CL_OVERLOADABLE
+sub_group_non_uniform_all (int predicate)
+{
+  return __nvvm_vote_all_sync (_pocl_sub_group_active_mask (), !!predicate);
+}
+
+int _CL_OVERLOADABLE
+sub_group_non_uniform_any (int predicate)
+{
+  return __nvvm_vote_any_sync (_pocl_sub_group_active_mask (), !!predicate);
+}
+
+#define SUB_GROUP_ALL_EQUAL(TYPE)                                           \
+  int _CL_OVERLOADABLE sub_group_non_uniform_all_equal (TYPE value)          \
+  {                                                                           \
+    const uint active = _pocl_sub_group_active_mask ();                      \
+    const TYPE first = sub_group_shuffle (value, ctz (active));              \
+    return __nvvm_vote_all_sync (active, value == first);                    \
+  }
+
+SUB_GROUP_ALL_EQUAL (char)
+SUB_GROUP_ALL_EQUAL (uchar)
+SUB_GROUP_ALL_EQUAL (short)
+SUB_GROUP_ALL_EQUAL (ushort)
+SUB_GROUP_ALL_EQUAL (int)
+SUB_GROUP_ALL_EQUAL (uint)
+SUB_GROUP_ALL_EQUAL (long)
+SUB_GROUP_ALL_EQUAL (ulong)
+SUB_GROUP_ALL_EQUAL (float)
+__IF_FP16 (SUB_GROUP_ALL_EQUAL (half))
+__IF_FP64 (SUB_GROUP_ALL_EQUAL (double))

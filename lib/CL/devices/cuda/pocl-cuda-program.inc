@@ -291,6 +291,11 @@ pocl_cuda_post_build_locked (cl_program program, unsigned device_i,
       ddata, 1, &constant_mem_base, &constant_mem_size, &align_map);
   if (result != CL_SUCCESS)
     goto ERROR_CLEANUP;
+  size_t global_storage_bytes = 0;
+  result = pocl_cuda_measure_global_storage (program->llvm_irs[device_i],
+                                            device, &global_storage_bytes);
+  if (result != CL_SUCCESS)
+    goto ERROR_CLEANUP;
   const pocl_cuda_program_data_t candidate = {
     .module_offsets = ofs_module,
     .constant_mem_base_offsets = constant_mem_base,
@@ -300,6 +305,7 @@ pocl_cuda_post_build_locked (cl_program program, unsigned device_i,
   result = pocl_cuda_publish_program_data (program, device_i, &candidate);
   if (result != CL_SUCCESS)
     goto ERROR_CLEANUP;
+  program->global_var_total_size[device_i] = global_storage_bytes;
   return result;
 ERROR_CLEANUP:
   if (ofs_module != NULL)

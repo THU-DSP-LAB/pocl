@@ -17,6 +17,9 @@ namespace cuda {
 using AlignmentMap = std::map<std::string, std::vector<size_t>>;
 
 bool verifyModule(llvm::Module *Module, const char *Step);
+void partitionGpidlFlatMemory(llvm::Module &Module);
+void normalizeGpidlNullCasts(llvm::Module &Module);
+void lowerGpidlNamedLocalPointers(llvm::Module &Module);
 
 void addKernelAnnotations(llvm::Module *Module);
 void fixConstantMemArgs(llvm::Module *Module);

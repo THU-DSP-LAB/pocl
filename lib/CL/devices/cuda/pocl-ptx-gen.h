@@ -52,6 +52,8 @@ typedef struct {
 
 int pocl_ptx_gen(const pocl_ptx_gen_options_t *options);
 
+int pocl_cuda_measure_global_storage(void *llvm_module, const void *device, size_t *bytes);
+
 int pocl_cuda_create_alignments(void *llvm_module, void *program,
                                 void **AlignmentMapPtr);
 

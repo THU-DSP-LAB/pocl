@@ -185,6 +185,14 @@ pocl_cuda_free_event_data (cl_event event)
 
 char* pocl_cuda_init_build(void *data)
 {
+#if GPIDL_CUDA_FUNCTIONAL_MODEL && defined(__linux__)
+    const pocl_cuda_device_data_t *device_data = data;
+    /* The shared compiler adds device features only in CL3.0 and later.
+       DOT also needs these macros to expose its overloads under CL1.2. */
+    if (device_data->integer_dot_product)
+      return strdup ("-mllvm --nvptx-short-ptr -D" CUDA_DOT_VECTOR_FEATURE
+                     "=1 -D" CUDA_DOT_PACKED_FEATURE "=1");
+#endif
     return strdup("-mllvm --nvptx-short-ptr");
 }
 

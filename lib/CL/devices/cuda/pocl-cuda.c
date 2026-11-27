@@ -164,6 +164,11 @@ typedef struct pocl_cuda_event_data_s
   int use_threads;
 } pocl_cuda_event_data_t;
 
+#if GPIDL_CUDA_FUNCTIONAL_MODEL && defined(__linux__)
+#define CUDA_DOT_VECTOR_FEATURE "__opencl_c_integer_dot_product_input_4x8bit"
+#define CUDA_DOT_PACKED_FEATURE "__opencl_c_integer_dot_product_input_4x8bit_packed"
+#endif
+
 typedef struct pocl_cuda_device_data_s
 {
   CUdevice device;
@@ -178,6 +183,9 @@ typedef struct pocl_cuda_device_data_s
   unsigned ptx; /* Targeted PTX version. Represented as MAJOR * 10 + MINOR. */
   int warp_size;
   cl_bool available;
+#if GPIDL_CUDA_FUNCTIONAL_MODEL && defined(__linux__)
+  bool integer_dot_product;
+#endif
 
   pocl_cuda_kernel_data_t cuda_builtin_kernels_data[CUDA_BUILTIN_KERNELS];
   pocl_cuda_kernel_data_t cudnn_builtin_kernels_data[CUDNN_BUILTIN_KERNELS];
@@ -207,3 +215,79 @@ extern uint64_t pocl_num_devices;
 #include "pocl-cuda-submit.inc"
 #include "pocl-cuda-event.inc"
 #include "pocl-cuda-svm.inc"
+
+void
+pocl_cuda_init_device_ops (struct pocl_device_ops *ops)
+{
+  ops->device_name = "cuda";
+  ops->build_hash = pocl_cuda_build_hash;
+  ops->probe = pocl_cuda_probe;
+  ops->uninit = pocl_cuda_uninit;
+  ops->reinit = NULL;
+  ops->init = pocl_cuda_init;
+  ops->init_queue = pocl_cuda_init_queue;
+  ops->free_queue = pocl_cuda_free_queue;
+
+  ops->alloc_mem_obj = pocl_cuda_alloc_mem_obj;
+  ops->alloc_mem_obj_at_create = 1;
+  ops->free = pocl_cuda_free;
+
+  ops->submit = pocl_cuda_submit;
+  ops->notify = pocl_cuda_notify;
+  ops->broadcast = pocl_broadcast;
+  ops->wait_event = pocl_cuda_wait_event;
+  ops->update_event = pocl_cuda_update_event;
+  ops->get_synchronized_timestamps = pocl_driver_get_synchronized_timestamps;
+  ops->free_event_data = pocl_cuda_free_event_data;
+  ops->join = pocl_cuda_join;
+  ops->flush = pocl_cuda_flush;
+  ops->init_build = pocl_cuda_init_build;
+  // TODO
+  ops->notify_event_finished = pocl_cuda_notify_event_finished;
+
+  ops->get_device_info_ext = pocl_cuda_get_device_info_ext;
+  ops->set_kernel_exec_info_ext = pocl_cuda_set_kernel_exec_info_ext;
+
+  ops->build_source = pocl_driver_build_source;
+  ops->link_program = pocl_driver_link_program;
+  ops->build_binary = pocl_driver_build_binary;
+  ops->setup_metadata = pocl_driver_setup_metadata;
+  ops->supports_binary = pocl_driver_supports_binary;
+  ops->build_poclbinary = pocl_driver_build_poclbinary;
+
+  ops->post_build_program = pocl_cuda_post_build_program;
+  ops->free_program = pocl_cuda_free_program;
+  ops->build_builtin = pocl_cuda_build_builtin;
+
+  ops->compile_kernel = pocl_cuda_compile_kernel;
+  ops->create_kernel = pocl_cuda_create_kernel;
+  ops->get_kernel_local_mem_size = pocl_cuda_get_kernel_local_mem_size;
+  ops->free_kernel = pocl_cuda_free_kernel;
+
+  // TODO
+  ops->get_mapping_ptr = pocl_driver_get_mapping_ptr;
+  ops->free_mapping_ptr = pocl_driver_free_mapping_ptr;
+
+  ops->can_migrate_d2d = pocl_cuda_can_migrate_d2d;
+  ops->migrate_d2d = NULL;
+  ops->read = NULL;
+  ops->read_rect = NULL;
+  ops->write = NULL;
+  ops->write_rect = NULL;
+  ops->copy = NULL;
+  ops->copy_rect = NULL;
+  ops->map_mem = NULL;
+  ops->unmap_mem = NULL;
+  ops->run = NULL;
+
+  ops->svm_alloc = pocl_cuda_svm_alloc;
+  ops->svm_free = pocl_cuda_svm_free;
+  /* No need to implement these two as they are no-ops
+   * and pocl_exec_command takes care of them. */
+  ops->svm_map = NULL;
+  ops->svm_unmap = NULL;
+  ops->svm_copy = pocl_cuda_svm_copy;
+  ops->svm_fill = pocl_cuda_svm_fill;
+
+  ops->get_subgroup_info_ext = pocl_cuda_get_subgroup_info_ext;
+}

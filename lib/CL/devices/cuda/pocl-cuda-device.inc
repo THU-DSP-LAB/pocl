@@ -1,78 +1,56 @@
-void
-pocl_cuda_init_device_ops (struct pocl_device_ops *ops)
+#include "pocl-cuda-gpidl-profile.h"
+
+#if GPIDL_CUDA_FUNCTIONAL_MODEL && defined(__linux__)
+/* Optional private probe provided by the GPIDL shim, not by CUDA drivers. */
+extern CUresult cuGPIDLDeviceIsSm89Sbt (int *enabled, CUdevice device)
+    __attribute__ ((weak));
+
+static void
+pocl_cuda_setup_sm89_sbt_features (cl_device_id dev,
+                                  pocl_cuda_device_data_t *data)
 {
-  ops->device_name = "cuda";
-  ops->build_hash = pocl_cuda_build_hash;
-  ops->probe = pocl_cuda_probe;
-  ops->uninit = pocl_cuda_uninit;
-  ops->reinit = NULL;
-  ops->init = pocl_cuda_init;
-  ops->init_queue = pocl_cuda_init_queue;
-  ops->free_queue = pocl_cuda_free_queue;
+  int sm89_sbt = 0;
+  if (data->sm != 89 || cuGPIDLDeviceIsSm89Sbt == NULL
+      || cuGPIDLDeviceIsSm89Sbt (&sm89_sbt, data->device) != CUDA_SUCCESS
+      || sm89_sbt != 1)
+    return;
 
-  ops->alloc_mem_obj = pocl_cuda_alloc_mem_obj;
-  ops->alloc_mem_obj_at_create = 1;
-  ops->free = pocl_cuda_free;
+  dev->extensions = CUDA_DEVICE_EXTENSIONS " cl_khr_extended_bit_ops";
+  if (!dev->compiler_available)
+    return;
 
-  ops->submit = pocl_cuda_submit;
-  ops->notify = pocl_cuda_notify;
-  ops->broadcast = pocl_broadcast;
-  ops->wait_event = pocl_cuda_wait_event;
-  ops->update_event = pocl_cuda_update_event;
-  ops->get_synchronized_timestamps = pocl_driver_get_synchronized_timestamps;
-  ops->free_event_data = pocl_cuda_free_event_data;
-  ops->join = pocl_cuda_join;
-  ops->flush = pocl_cuda_flush;
-  ops->init_build = pocl_cuda_init_build;
-  // TODO
-  ops->notify_event_finished = pocl_cuda_notify_event_finished;
-
-  ops->get_device_info_ext = pocl_cuda_get_device_info_ext;
-  ops->set_kernel_exec_info_ext = pocl_cuda_set_kernel_exec_info_ext;
-
-  ops->build_source = pocl_driver_build_source;
-  ops->link_program = pocl_driver_link_program;
-  ops->build_binary = pocl_driver_build_binary;
-  ops->setup_metadata = pocl_driver_setup_metadata;
-  ops->supports_binary = pocl_driver_supports_binary;
-  ops->build_poclbinary = pocl_driver_build_poclbinary;
-
-  ops->post_build_program = pocl_cuda_post_build_program;
-  ops->free_program = pocl_cuda_free_program;
-  ops->build_builtin = pocl_cuda_build_builtin;
-
-  ops->compile_kernel = pocl_cuda_compile_kernel;
-  ops->create_kernel = pocl_cuda_create_kernel;
-  ops->get_kernel_local_mem_size = pocl_cuda_get_kernel_local_mem_size;
-  ops->free_kernel = pocl_cuda_free_kernel;
-
-  // TODO
-  ops->get_mapping_ptr = pocl_driver_get_mapping_ptr;
-  ops->free_mapping_ptr = pocl_driver_free_mapping_ptr;
-
-  ops->can_migrate_d2d = pocl_cuda_can_migrate_d2d;
-  ops->migrate_d2d = NULL;
-  ops->read = NULL;
-  ops->read_rect = NULL;
-  ops->write = NULL;
-  ops->write_rect = NULL;
-  ops->copy = NULL;
-  ops->copy_rect = NULL;
-  ops->map_mem = NULL;
-  ops->unmap_mem = NULL;
-  ops->run = NULL;
-
-  ops->svm_alloc = pocl_cuda_svm_alloc;
-  ops->svm_free = pocl_cuda_svm_free;
-  /* No need to implement these two as they are no-ops
-   * and pocl_exec_command takes care of them. */
-  ops->svm_map = NULL;
-  ops->svm_unmap = NULL;
-  ops->svm_copy = pocl_cuda_svm_copy;
-  ops->svm_fill = pocl_cuda_svm_fill;
-
-  ops->get_subgroup_info_ext = pocl_cuda_get_subgroup_info_ext;
+  data->integer_dot_product = true;
+  dev->extensions
+      = CUDA_DEVICE_EXTENSIONS " cl_khr_extended_bit_ops cl_khr_integer_dot_product"
+                               " cl_khr_async_work_group_copy_fence cl_khr_extended_async_copies"
+                               " cl_khr_subgroup_extended_types cl_khr_subgroups"
+                               " cl_khr_subgroup_clustered_reduce"
+                               " cl_khr_subgroup_non_uniform_arithmetic"
+                               " cl_khr_subgroup_shuffle cl_khr_subgroup_shuffle_relative"
+                               " cl_khr_subgroup_rotate cl_khr_subgroup_non_uniform_vote"
+                               " cl_khr_subgroup_ballot";
+#define GPIDL_SBT_C_FEATURES CUDA_DEVICE_FEATURES_30 " " CUDA_DOT_VECTOR_FEATURE " " \
+                            CUDA_DOT_PACKED_FEATURE " __opencl_c_subgroups"
+  dev->features = GPIDL_SBT_C_FEATURES;
+  if (sizeof (void *) == 8)
+    {
+      dev->features = GPIDL_SBT_C_FEATURES " __opencl_c_program_scope_global_variables"
+                                          " __opencl_c_generic_address_space";
+      dev->generic_as_support = CL_TRUE;
+      dev->global_var_max_size = GPIDL_CUDA_PROGRAM_GLOBAL_MAX_BYTES;
+      dev->kernellib_name = GPIDL_CUDA_GENERIC_KERNEL_LIBRARY;
+      dev->kernellib_fallback_name = NULL;
+    }
+#undef GPIDL_SBT_C_FEATURES
+  /* GPIDL yields to other warps in this CTA at taken loop back edges. */
+  dev->sub_group_independent_forward_progress = CL_TRUE;
+  dev->max_num_sub_groups
+      = (dev->max_work_group_size + data->warp_size - 1) / data->warp_size;
+  // The device library provides a generic implementation.
+  dev->dot_product_caps = CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_KHR
+                          | CL_DEVICE_INTEGER_DOT_PRODUCT_INPUT_4x8BIT_PACKED_KHR;
 }
+#endif
 
 cl_int
 pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
@@ -421,6 +399,11 @@ pocl_cuda_init (unsigned j, cl_device_id dev, const char *parameters)
   dev->non_uniform_work_group_support = CL_TRUE;
 
 #endif
+#if GPIDL_CUDA_FUNCTIONAL_MODEL && defined(__linux__)
+  if (ret == CL_SUCCESS)
+    pocl_cuda_setup_sm89_sbt_features (dev, data);
+#endif
+
   pocl_setup_opencl_c_with_version (dev);
   pocl_setup_features_with_version (dev);
 
@@ -451,8 +434,17 @@ char *
 pocl_cuda_build_hash (cl_device_id device)
 {
   char *res = calloc (1000, sizeof (char));
-  snprintf (res, 1000, "CUDA-%s-v%s", device->llvm_cpu,
-            CUDA_BINARY_FORMAT_VERSION);
+  const char *dot_suffix = "";
+#if GPIDL_CUDA_FUNCTIONAL_MODEL && defined(__linux__)
+  /* Separate the source cache and PoCL program binaries by DOT support. */
+  const pocl_cuda_device_data_t *data = device->data;
+  if (data->integer_dot_product)
+    dot_suffix = device->generic_as_support
+      ? "-integer-dot-product-copy-fence-subgroups-ifp-extended-types-arithmetic-generic-extended-copy-subgroup-shuffle-rotate-vote-ballot"
+      : "-integer-dot-product-copy-fence-subgroups-ifp-extended-types-arithmetic-extended-copy-subgroup-shuffle-rotate-vote-ballot";
+#endif
+  snprintf (res, 1000, "CUDA-%s-v%s%s", device->llvm_cpu,
+            CUDA_BINARY_FORMAT_VERSION, dot_suffix);
   return res;
 }
 

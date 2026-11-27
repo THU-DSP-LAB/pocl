@@ -2,6 +2,7 @@
 
 #include "config.h"
 
+#include "pocl-cuda-gpidl-profile.h"
 #include "pocl-ptx-gen-internal.h"
 #include "pocl-ptx-gen.h"
 #include "pocl-ptx-printf.h"
@@ -18,6 +19,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <cstring>
 #include <memory>
 #include <string>
 
@@ -153,6 +155,15 @@ int pocl_ptx_gen(const pocl_ptx_gen_options_t *Options) {
     if (preparePtxModule(Module, TransformOptions, Options->alignment_map) !=
         CL_SUCCESS)
       return CL_BUILD_PROGRAM_FAILURE;
+    const auto Device = static_cast<cl_device_id>(Options->device);
+    if (std::strcmp(Device->kernellib_name,
+                    GPIDL_CUDA_GENERIC_KERNEL_LIBRARY) == 0) {
+      pocl::cuda::normalizeGpidlNullCasts(*Module);
+      pocl::cuda::lowerGpidlNamedLocalPointers(*Module);
+      pocl::cuda::partitionGpidlFlatMemory(*Module);
+      if (!pocl::cuda::verifyModule(Module, "partitionGpidlFlatMemory"))
+        return CL_BUILD_PROGRAM_FAILURE;
+    }
   }
 
   std::string Features =

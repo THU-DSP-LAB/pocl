@@ -53,9 +53,13 @@ CL_API_ENTRY cl_int CL_API_ENTRY POname (clGetKernelSubGroupInfo) (
   POCL_MSG_PRINT_INFO ("clGetKernelSubGroupInfo: %u \n", param_name);
   cl_device_id realdev = pocl_real_dev (device);
   /* Check device for subgroup support */
+  const cl_bool core_subgroups
+      = (realdev->features != NULL
+         && strstr (realdev->features, "__opencl_c_subgroups") != NULL);
   POCL_RETURN_ERROR_ON (
-    (strstr (realdev->extensions, "cl_khr_subgroup") == NULL),
-    CL_INVALID_OPERATION, "device does not support any subgroup extensions\n");
+    (!core_subgroups
+     && strstr (realdev->extensions, "cl_khr_subgroup") == NULL),
+    CL_INVALID_OPERATION, "device does not support subgroups\n");
   POCL_RETURN_ERROR_ON ((realdev->max_num_sub_groups == 0),
                         CL_INVALID_OPERATION,
                         "device does not support any subgroup sizes\n");

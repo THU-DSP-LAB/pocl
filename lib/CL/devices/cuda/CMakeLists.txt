@@ -34,6 +34,10 @@ unset(CMAKE_CXX_STANDARD_REQUIRED)
 set(CUDA_PTX_SOURCES
   pocl-ptx-alignment.cc
   pocl-ptx-gen.cc
+  pocl-ptx-global-storage.cc
+  pocl-ptx-gpidl-flat-memory.cc
+  pocl-ptx-gpidl-addresses.cc
+  pocl-ptx-gpidl-local-pointers.cc
   pocl-ptx-gen.h
   pocl-ptx-gen-internal.h
   pocl-ptx-kernel-abi.cc
@@ -48,6 +52,7 @@ set(CUDA_PTX_SOURCES
   pocl-ptx-vector-args.h)
 set(CUDA_DRIVER_FRAGMENTS
   pocl-cuda-device.inc
+  pocl-cuda-gpidl-profile.h
   pocl-cuda-event.inc
   pocl-cuda-kernel.inc
   pocl-cuda-launch-types.h

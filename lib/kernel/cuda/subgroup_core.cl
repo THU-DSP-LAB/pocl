@@ -103,6 +103,10 @@ get_first_llid (void)
     return sub_group_shuffle (val, id);                                       \
   }
 
+SUB_GROUP_BROADCAST_T (char)
+SUB_GROUP_BROADCAST_T (uchar)
+SUB_GROUP_BROADCAST_T (short)
+SUB_GROUP_BROADCAST_T (ushort)
 SUB_GROUP_BROADCAST_T (int)
 SUB_GROUP_BROADCAST_T (uint)
 SUB_GROUP_BROADCAST_T (long)
@@ -110,6 +114,46 @@ SUB_GROUP_BROADCAST_T (ulong)
 __IF_FP16 (SUB_GROUP_BROADCAST_T (half))
 SUB_GROUP_BROADCAST_T (float)
 __IF_FP64 (SUB_GROUP_BROADCAST_T (double))
+
+#define SUB_GROUP_BROADCAST_VECTOR(TYPE, WIDTH)                              \
+  TYPE##WIDTH _CL_OVERLOADABLE sub_group_broadcast (TYPE##WIDTH val, uint id) \
+  {                                                                           \
+    TYPE##WIDTH result;                                                       \
+    _Pragma ("unroll")                                                        \
+    for (uint component = 0; component < WIDTH; ++component)                 \
+      result[component] = sub_group_broadcast (val[component], id);           \
+    return result;                                                            \
+  }
+
+#define SUB_GROUP_BROADCAST_VECTORS(TYPE)                                     \
+  SUB_GROUP_BROADCAST_VECTOR (TYPE, 2)                                        \
+  SUB_GROUP_BROADCAST_VECTOR (TYPE, 3)                                        \
+  SUB_GROUP_BROADCAST_VECTOR (TYPE, 4)                                        \
+  SUB_GROUP_BROADCAST_VECTOR (TYPE, 8)                                        \
+  SUB_GROUP_BROADCAST_VECTOR (TYPE, 16)
+
+SUB_GROUP_BROADCAST_VECTORS (char)
+SUB_GROUP_BROADCAST_VECTORS (uchar)
+SUB_GROUP_BROADCAST_VECTORS (short)
+SUB_GROUP_BROADCAST_VECTORS (ushort)
+SUB_GROUP_BROADCAST_VECTORS (int)
+SUB_GROUP_BROADCAST_VECTORS (uint)
+SUB_GROUP_BROADCAST_VECTORS (long)
+SUB_GROUP_BROADCAST_VECTORS (ulong)
+SUB_GROUP_BROADCAST_VECTORS (float)
+__IF_FP64 (SUB_GROUP_BROADCAST_VECTORS (double))
+
+#define SUB_GROUP_BROADCAST_HALF_VECTOR(WIDTH)                               \
+  half##WIDTH _CL_OVERLOADABLE sub_group_broadcast (half##WIDTH val, uint id) \
+  {                                                                           \
+    return as_half##WIDTH (sub_group_broadcast (as_ushort##WIDTH (val), id));  \
+  }
+
+__IF_FP16 (SUB_GROUP_BROADCAST_HALF_VECTOR (2))
+__IF_FP16 (SUB_GROUP_BROADCAST_HALF_VECTOR (3))
+__IF_FP16 (SUB_GROUP_BROADCAST_HALF_VECTOR (4))
+__IF_FP16 (SUB_GROUP_BROADCAST_HALF_VECTOR (8))
+__IF_FP16 (SUB_GROUP_BROADCAST_HALF_VECTOR (16))
 
 #define SUB_GROUP_SCAN_INCLUSIVE_OT(OPNAME, OPERATION, TYPE)                  \
   TYPE _CL_OVERLOADABLE sub_group_scan_inclusive##OPNAME (TYPE val)           \
@@ -139,6 +183,10 @@ __IF_FP64 (SUB_GROUP_BROADCAST_T (double))
   }
 
 #define SUB_GROUP_SCAN_INCLUSIVE_T(OPNAME, OPERATION)                         \
+  SUB_GROUP_SCAN_INCLUSIVE_OT (OPNAME, OPERATION, char)                      \
+  SUB_GROUP_SCAN_INCLUSIVE_OT (OPNAME, OPERATION, uchar)                     \
+  SUB_GROUP_SCAN_INCLUSIVE_OT (OPNAME, OPERATION, short)                     \
+  SUB_GROUP_SCAN_INCLUSIVE_OT (OPNAME, OPERATION, ushort)                    \
   SUB_GROUP_SCAN_INCLUSIVE_OT (OPNAME, OPERATION, int)                        \
   SUB_GROUP_SCAN_INCLUSIVE_OT (OPNAME, OPERATION, uint)                       \
   SUB_GROUP_SCAN_INCLUSIVE_OT (OPNAME, OPERATION, long)                       \
@@ -169,6 +217,10 @@ SUB_GROUP_SCAN_INCLUSIVE_T (_max, (a > b ? a : b))
     return result;                                                            \
   }
 
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, char, 0)
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, uchar, 0)
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, short, 0)
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, ushort, 0)
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, int, 0)
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, uint, 0)
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, long, 0)
@@ -177,6 +229,10 @@ __IF_FP16 (SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, half, (half)0.0f))
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, float, 0.0f)
 __IF_FP64 (SUB_GROUP_SCAN_EXCLUSIVE_OT (_add, a + b, double, 0.0))
 
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_min, a > b ? b : a, char, CHAR_MAX)
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_min, a > b ? b : a, uchar, UCHAR_MAX)
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_min, a > b ? b : a, short, SHRT_MAX)
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_min, a > b ? b : a, ushort, USHRT_MAX)
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_min, a > b ? b : a, int, INT_MAX)
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_min, a > b ? b : a, uint, UINT_MAX)
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_min, a > b ? b : a, long, LONG_MAX)
@@ -187,6 +243,10 @@ SUB_GROUP_SCAN_EXCLUSIVE_OT (_min, a > b ? b : a, float, +INFINITY)
 __IF_FP64 (SUB_GROUP_SCAN_EXCLUSIVE_OT (
   _min, a > b ? b : a, double, (double)(+INFINITY)))
 
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_max, a > b ? a : b, char, CHAR_MIN)
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_max, a > b ? a : b, uchar, 0)
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_max, a > b ? a : b, short, SHRT_MIN)
+SUB_GROUP_SCAN_EXCLUSIVE_OT (_max, a > b ? a : b, ushort, 0)
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_max, a > b ? a : b, int, INT_MIN)
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_max, a > b ? a : b, uint, 0)
 SUB_GROUP_SCAN_EXCLUSIVE_OT (_max, a > b ? a : b, long, LONG_MIN)

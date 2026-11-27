@@ -34,11 +34,19 @@ list(APPEND KERNEL_SOURCES
   half_sin.cl half_sqrt.cl half_tan.cl
   svm_atomics.cl svm_atomics_host.cl)
 
-if(CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_integer_dot_product")
+# The functional-model CUDA device publishes these after selecting SM89/SBT.
+if(GPIDL_CUDA_FUNCTIONAL_MODEL AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND KERNEL_SOURCES cuda/async_work_group_copy_fence.cl cuda/async_copy_extensions.cl)
+endif()
+
+# Linux functional-model CUDA publishes DOT per initialized device, not here.
+if((GPIDL_CUDA_FUNCTIONAL_MODEL AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+   OR CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_integer_dot_product")
   list(APPEND KERNEL_SOURCES integer_dot_product.cl)
 endif()
 
-if(CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_extended_bit_ops")
+# The functional-model backend decides whether to publish this at device init.
+if(GPIDL_CUDA_FUNCTIONAL_MODEL OR CUDA_DEVICE_EXTENSIONS MATCHES "cl_khr_extended_bit_ops")
   list(APPEND KERNEL_SOURCES extended_bitops.cl)
 endif()
 
@@ -153,7 +161,9 @@ make_kernel_bc(KERNEL_BC_SM30_PTX60_63 "${LLVM_TARGET}-sm30-ptx60-63"
 
 make_kernel_bc(KERNEL_BC_SM70_PTX64 "${LLVM_TARGET}-sm70-ptx64"
  "sm70-ptx64-BCs" 0 0 0 ${KERNEL_SOURCES}
- "cuda/subgroup_sync.cl")
+ "cuda/subgroup_sync.cl"
+ "cuda/subgroup_arithmetic.cl"
+ "cuda/subgroup_sync_ballot.cl")
 
 # just debug
 #message(STATUS "${LLVM_TARGET} Kernel BC: ${KERNEL_BC_SM30_PTX60_63}")
@@ -161,7 +171,6 @@ make_kernel_bc(KERNEL_BC_SM70_PTX64 "${LLVM_TARGET}-sm70-ptx64"
 list(APPEND KERNEL_BC_LIST "${KERNEL_BC_SM30_PTX60LT}")
 list(APPEND KERNEL_BC_LIST "${KERNEL_BC_SM30_PTX60_63}")
 list(APPEND KERNEL_BC_LIST "${KERNEL_BC_SM70_PTX64}")
-set(KERNEL_BC_LIST "${KERNEL_BC_LIST}" PARENT_SCOPE)
 
 # a target is needed...
 add_custom_target("kernel_${LLVM_TARGET}_sm30_ptx60lt"
@@ -175,6 +184,23 @@ list(APPEND KERNEL_TARGET_LIST "kernel_${LLVM_TARGET}_sm30_ptx60lt")
 list(APPEND KERNEL_TARGET_LIST "kernel_${LLVM_TARGET}_sm30_ptx60_63")
 list(APPEND KERNEL_TARGET_LIST "kernel_${LLVM_TARGET}_sm70_ptx64")
 
+if(GPIDL_CUDA_FUNCTIONAL_MODEL AND CMAKE_SYSTEM_NAME STREQUAL "Linux"
+   AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(gpidl_generic_source "${CMAKE_CURRENT_SOURCE_DIR}/gpidl_generic_address_space.ll")
+  set(gpidl_generic_lib "${CMAKE_CURRENT_BINARY_DIR}/kernel-nvptx64-sm70-ptx64-gpidl-generic.bc")
+  add_custom_command(OUTPUT "${gpidl_generic_lib}"
+    COMMAND "${HOST_LLVM_LINK}" --suppress-warnings "${KERNEL_BC_SM70_PTX64}"
+            "${gpidl_generic_source}" -o "${gpidl_generic_lib}"
+    DEPENDS "${KERNEL_BC_SM70_PTX64}" "${gpidl_generic_source}"
+    VERBATIM)
+  add_custom_target(kernel_cuda_gpidl_generic DEPENDS "${gpidl_generic_lib}")
+  list(APPEND KERNEL_TARGET_LIST kernel_cuda_gpidl_generic)
+  list(APPEND KERNEL_BC_LIST "${gpidl_generic_lib}")
+  install(FILES "${gpidl_generic_lib}"
+    DESTINATION "${POCL_INSTALL_PRIVATE_DATADIR_REL}" COMPONENT "lib")
+endif()
+
+set(KERNEL_BC_LIST "${KERNEL_BC_LIST}" PARENT_SCOPE)
 set(KERNEL_TARGET_LIST "${KERNEL_TARGET_LIST}" PARENT_SCOPE)
 
 install(FILES

@@ -1,0 +1,7 @@
+#ifndef POCL_CUDA_GPIDL_PROFILE_H
+#define POCL_CUDA_GPIDL_PROFILE_H
+
+#define GPIDL_CUDA_GENERIC_KERNEL_LIBRARY "kernel-nvptx64-sm70-ptx64-gpidl-generic"
+#define GPIDL_CUDA_PROGRAM_GLOBAL_MAX_BYTES (64u * 1024u)
+
+#endif

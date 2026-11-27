@@ -193,4 +193,22 @@
 
 #include "pocl_image_types.h"
 
+#ifdef cl_khr_extended_async_copies
+#define POCL_DECLARE_EXTENDED_COPY(DST, SRC)                                    \
+  __attribute__ ((overloadable)) event_t async_work_group_copy_2D2D (           \
+      DST void *, size_t, const SRC void *, size_t, size_t, size_t, size_t,     \
+      size_t, size_t, event_t);                                               \
+  __attribute__ ((overloadable)) event_t async_work_group_copy_3D3D (           \
+      DST void *, size_t, const SRC void *, size_t, size_t, size_t, size_t,     \
+      size_t, size_t, size_t, size_t, size_t, event_t);
+POCL_DECLARE_EXTENDED_COPY (__local, __global)
+POCL_DECLARE_EXTENDED_COPY (__global, __local)
+#undef POCL_DECLARE_EXTENDED_COPY
+#endif
+
+#ifdef cl_khr_async_work_group_copy_fence
+__attribute__ ((convergent, overloadable)) void
+async_work_group_copy_fence (cl_mem_fence_flags);
+#endif
+
 #pragma OPENCL EXTENSION all : disable
